@@ -3,9 +3,12 @@ package com.example.buddy
 import android.app.Application
 import com.example.buddy.agent.AgentOrchestrator
 import com.example.buddy.agent.ContextBuilder
+import com.example.buddy.agent.LocalCommandRouter
 import com.example.buddy.agent.ToolRegistry
-import com.example.buddy.ai.LLMClient
+import com.example.buddy.ai.ModelRouter
 import com.example.buddy.ai.RateLimiter
+import com.example.buddy.ai.ResponseCache
+import com.example.buddy.ai.TokenBudget
 import com.example.buddy.data.AppDatabase
 import com.example.buddy.data.repo.AuditRepository
 import com.example.buddy.data.repo.ChatRepository
@@ -13,8 +16,8 @@ import com.example.buddy.data.repo.MemoryRepository
 import com.example.buddy.security.SecureVault
 
 /**
- * Application class that initializes [SecureVault], [AppDatabase], repositories,
- * and the [AgentOrchestrator] singleton graph.
+ * Wires the whole graph: encrypted vault, Room, repositories, the multi-model
+ * router, the local fast-path, and the agent orchestrator.
  */
 class AiAgentApp : Application() {
 
@@ -30,6 +33,9 @@ class AiAgentApp : Application() {
     lateinit var memoryRepository: MemoryRepository
         private set
 
+    lateinit var modelRouter: ModelRouter
+        private set
+
     lateinit var agentOrchestrator: AgentOrchestrator
         private set
 
@@ -37,10 +43,8 @@ class AiAgentApp : Application() {
         super.onCreate()
         instance = this
 
-        // 1. Initialize encrypted key storage
         SecureVault.init(this)
 
-        // 2. Initialize Room database & repositories
         database = AppDatabase.getInstance(this)
         chatRepository = ChatRepository(database.chatDao())
         auditRepository = AuditRepository(database.actionLogDao())
@@ -49,19 +53,23 @@ class AiAgentApp : Application() {
             preferenceDao = database.preferenceDao()
         )
 
-        // 3. Wire AI & Agent layers
-        val rateLimiter = RateLimiter(maxCallsPerMinute = 30)
-        val llmClient = LLMClient(rateLimiter = rateLimiter)
-        val contextBuilder = ContextBuilder(memoryRepository = memoryRepository)
-        val toolRegistry = ToolRegistry(
-            context = applicationContext,
-            memoryRepository = memoryRepository
+        // Budget + rate limit come from the user's saved settings, so the app can
+        // never quietly burn through an API key again.
+        val budget = TokenBudget(
+            maxCalls = SecureVault.getMaxCalls(),
+            maxTokens = SecureVault.getMaxTokens()
+        )
+        modelRouter = ModelRouter(
+            rateLimiter = RateLimiter(maxCallsPerMinute = 12),
+            budget = budget,
+            cache = ResponseCache()
         )
 
         agentOrchestrator = AgentOrchestrator(
-            contextBuilder = contextBuilder,
-            llmClient = llmClient,
-            toolRegistry = toolRegistry,
+            contextBuilder = ContextBuilder(memoryRepository),
+            router = modelRouter,
+            toolRegistry = ToolRegistry(applicationContext, memoryRepository),
+            localRouter = LocalCommandRouter(applicationContext),
             chatRepository = chatRepository,
             auditRepository = auditRepository
         )

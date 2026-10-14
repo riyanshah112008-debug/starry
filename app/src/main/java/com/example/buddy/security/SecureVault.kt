@@ -4,17 +4,30 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.example.buddy.ai.ModelCatalog
+import com.example.buddy.ai.ProviderKind
 
 /**
- * Hardware-backed EncryptedSharedPreferences wrapper for storing sensitive secrets
- * like the user's OpenAI API key. No API keys are ever hardcoded.
+ * Encrypted key/value store for provider API keys and Buddy's settings.
+ * Nothing is ever hardcoded: the user supplies every key at runtime, and it
+ * never leaves the device except to the provider it belongs to.
  */
 object SecureVault {
 
     private const val FILE_NAME = "buddy_secure_vault"
-    private const val KEY_OPENAI_API_KEY = "openai_api_key"
-    private const val KEY_OPENAI_MODEL = "openai_model"
-    private const val DEFAULT_MODEL = "gpt-4o-mini"
+    private const val LEGACY_OPENAI_KEY = "openai_api_key"
+
+    private const val PREFIX_KEY = "api_key_"
+    private const val PREFIX_BASE_URL = "base_url_"
+    private const val KEY_PROVIDER = "provider_id"
+    private const val KEY_MODEL = "model_id"
+    private const val KEY_STRATEGY = "strategy"
+    private const val KEY_MAX_CALLS = "max_calls"
+    private const val KEY_MAX_TOKENS = "max_tokens"
+    private const val KEY_HANDS_FREE = "hands_free"
+    private const val KEY_SPEAK_REPLIES = "speak_replies"
+    private const val KEY_SEND_SNAPSHOT = "send_snapshot"
+    private const val KEY_MULTI_STEP = "multi_step"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -23,13 +36,12 @@ object SecureVault {
         if (prefs != null) return
         synchronized(this) {
             if (prefs == null) {
-                val appContext = context.applicationContext
-                val masterKey = MasterKey.Builder(appContext)
+                val app = context.applicationContext
+                val masterKey = MasterKey.Builder(app)
                     .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                     .build()
-
                 prefs = EncryptedSharedPreferences.create(
-                    appContext,
+                    app,
                     FILE_NAME,
                     masterKey,
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
@@ -39,32 +51,87 @@ object SecureVault {
         }
     }
 
-    private fun requirePrefs(): SharedPreferences {
-        return checkNotNull(prefs) {
-            "SecureVault must be initialized in AiAgentApp.onCreate() before use."
+    private fun p(): SharedPreferences = checkNotNull(prefs) {
+        "SecureVault.init() must run in AiAgentApp.onCreate()"
+    }
+
+    // ---------------- API keys (one per provider) ----------------
+
+    fun saveKey(providerId: String, value: String) {
+        p().edit().putString(PREFIX_KEY + providerId, value.trim()).apply()
+    }
+
+    fun getKey(providerId: String): String? {
+        val stored = p().getString(PREFIX_KEY + providerId, null)?.trim()
+        if (!stored.isNullOrEmpty()) return stored
+        // one-time migration from the original single-key layout
+        if (providerId == ProviderKind.OPENAI.id) {
+            val legacy = p().getString(LEGACY_OPENAI_KEY, null)?.trim()
+            if (!legacy.isNullOrEmpty()) return legacy
         }
+        return null
     }
 
-    fun saveApiKey(apiKey: String) {
-        requirePrefs().edit()
-            .putString(KEY_OPENAI_API_KEY, apiKey.trim())
-            .apply()
+    fun hasAnyKey(): Boolean = ProviderKind.values().any { !getKey(it.id).isNullOrBlank() }
+
+    fun savedKeyCount(): Int = ProviderKind.values().count { !getKey(it.id).isNullOrBlank() }
+
+    // ---------------- base URLs (custom / ollama) ----------------
+
+    fun saveBaseUrl(providerId: String, value: String) {
+        p().edit().putString(PREFIX_BASE_URL + providerId, value.trim()).apply()
     }
 
-    fun getApiKey(): String? {
-        val value = requirePrefs().getString(KEY_OPENAI_API_KEY, null)?.trim()
+    fun getBaseUrl(providerId: String): String? {
+        val value = p().getString(PREFIX_BASE_URL + providerId, null)?.trim()
         return if (value.isNullOrEmpty()) null else value
     }
 
-    fun hasApiKey(): Boolean = !getApiKey().isNullOrBlank()
+    // ---------------- selected provider / model / strategy ----------------
 
-    fun getModelName(): String {
-        return requirePrefs().getString(KEY_OPENAI_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL
+    fun saveProvider(id: String) = p().edit().putString(KEY_PROVIDER, id).apply()
+
+    fun getProvider(): ProviderKind =
+        ProviderKind.fromId(p().getString(KEY_PROVIDER, null) ?: ProviderKind.OPENAI.id)
+
+    fun saveModel(id: String) = p().edit().putString(KEY_MODEL, id).apply()
+
+    fun getModel(): String =
+        p().getString(KEY_MODEL, null)?.takeIf { it.isNotBlank() }
+            ?: ModelCatalog.defaultFor(getProvider())
+
+    fun saveStrategy(id: String) = p().edit().putString(KEY_STRATEGY, id).apply()
+
+    fun getStrategy(): String = p().getString(KEY_STRATEGY, null) ?: "auto"
+
+    // ---------------- spend budget ----------------
+
+    fun saveBudget(maxCalls: Int, maxTokens: Int) {
+        p().edit().putInt(KEY_MAX_CALLS, maxCalls).putInt(KEY_MAX_TOKENS, maxTokens).apply()
     }
 
-    fun setModelName(model: String) {
-        requirePrefs().edit()
-            .putString(KEY_OPENAI_MODEL, model.trim().ifEmpty { DEFAULT_MODEL })
-            .apply()
-    }
+    fun getMaxCalls(): Int = p().getInt(KEY_MAX_CALLS, 8)
+
+    fun getMaxTokens(): Int = p().getInt(KEY_MAX_TOKENS, 9000)
+
+    // ---------------- behaviour toggles ----------------
+
+    fun setHandsFree(on: Boolean) = p().edit().putBoolean(KEY_HANDS_FREE, on).apply()
+
+    fun isHandsFree(): Boolean = p().getBoolean(KEY_HANDS_FREE, false)
+
+    fun setSpeakReplies(on: Boolean) = p().edit().putBoolean(KEY_SPEAK_REPLIES, on).apply()
+
+    fun isSpeakReplies(): Boolean = p().getBoolean(KEY_SPEAK_REPLIES, true)
+
+    fun setSendSnapshot(on: Boolean) = p().edit().putBoolean(KEY_SEND_SNAPSHOT, on).apply()
+
+    fun isSendSnapshot(): Boolean = p().getBoolean(KEY_SEND_SNAPSHOT, false)
+
+    fun setMultiStep(on: Boolean) = p().edit().putBoolean(KEY_MULTI_STEP, on).apply()
+
+    fun isMultiStep(): Boolean = p().getBoolean(KEY_MULTI_STEP, false)
+
+    /** Kept for compatibility with older call sites. */
+    fun hasApiKey(): Boolean = hasAnyKey()
 }

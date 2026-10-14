@@ -8,7 +8,6 @@
     android:background="@color/buddy_bg"
     tools:context=".MainActivity">
 
-    <!-- Warm Top Header Bar -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/headerCard"
         android:layout_width="0dp"
@@ -21,55 +20,87 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <androidx.constraintlayout.widget.ConstraintLayout
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="vertical"
             android:paddingHorizontal="16dp"
-            android:paddingVertical="12dp">
+            android:paddingTop="12dp"
+            android:paddingBottom="10dp">
 
-            <TextView
-                android:id="@+id/tvAppTitle"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/app_name"
-                android:textColor="@color/buddy_amber_primary"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tvAppTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/app_name"
+                    android:textColor="@color/buddy_amber_primary"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/btnSettings"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/settings_title"
+                    android:src="@android:drawable/ic_menu_preferences"
+                    app:tint="@color/buddy_amber_primary" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tvStatusSubtitle"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:layout_marginEnd="12dp"
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="@string/status_ready"
                 android:textColor="@color/buddy_text_secondary"
-                android:textSize="13sp"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toStartOf="@+id/btnSettings"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/tvAppTitle" />
+                android:textSize="13sp" />
 
-            <ImageButton
-                android:id="@+id/btnSettings"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/settings_title"
-                android:src="@android:drawable/ic_menu_preferences"
-                app:tint="@color/buddy_amber_primary"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-        </androidx.constraintlayout.widget.ConstraintLayout>
+                <TextView
+                    android:id="@+id/tvAccessibility"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingVertical="6dp"
+                    android:text="@string/accessibility_off"
+                    android:textColor="@color/buddy_text_secondary"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnHandsFree"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="14dp"
+                    android:text="@string/hands_free_off"
+                    android:textColor="@color/buddy_amber_primary"
+                    android:textSize="12sp"
+                    app:backgroundTint="@color/buddy_surface_elevated"
+                    app:cornerRadius="19dp" />
+            </LinearLayout>
+        </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- Chat History RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvChat"
         android:layout_width="0dp"
@@ -83,7 +114,6 @@
         app:layout_constraintTop_toBottomOf="@id/headerCard"
         tools:listitem="@layout/item_chat" />
 
-    <!-- Bottom Input Bar -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/inputBarCard"
         android:layout_width="0dp"
@@ -144,7 +174,6 @@
                 android:textColor="@color/buddy_text_on_amber"
                 app:backgroundTint="@color/buddy_amber_primary"
                 app:cornerRadius="24dp" />
-
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 

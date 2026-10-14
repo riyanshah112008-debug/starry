@@ -3,56 +3,39 @@ package com.example.buddy.agent
 import com.example.buddy.AutoService
 import com.example.buddy.data.repo.MemoryRepository
 import com.example.buddy.security.InjectionGuard
+import com.example.buddy.security.SecureVault
 
 /**
- * Builds Buddy's system prompt by combining the core warm personality prompt
- * with long-term memories, user preferences, and a sanitized screen snapshot.
+ * Builds Buddy's system prompt.
+ *
+ * Deliberately frugal, because every character here is billed on every call:
+ * - long-term memory is capped and truncated,
+ * - the screen snapshot is only attached when the user opts in (default off),
+ * - the screen snapshot is skipped entirely when accessibility isn't running.
  */
-class ContextBuilder(
-    private val memoryRepository: MemoryRepository
-) {
+class ContextBuilder(private val memoryRepository: MemoryRepository) {
 
     suspend fun buildSystemPrompt(includeScreenSnapshot: Boolean = true): String {
         val builder = StringBuilder(BUDDY_BASE_SYSTEM_PROMPT.trim())
 
-        // Inject stored long-term memories
-        val memories = memoryRepository.getTopMemories(limit = 40)
+        val memories = memoryRepository.getTopMemories(limit = MAX_MEMORIES)
         if (memories.isNotEmpty()) {
-            builder.append("\n\nLong-term memory (facts you remember about the user):\n")
+            builder.append("\n\nWhat you remember about the user:\n")
             for (memory in memories) {
                 builder.append("- ")
-                    .append(memory.key)
+                    .append(memory.key.take(40))
                     .append(": ")
-                    .append(memory.value)
-                    .append("\n")
+                    .append(memory.value.take(120))
+                    .append('\n')
             }
         }
 
-        // Inject stored user preferences if any
-        val prefs = memoryRepository.getAllPreferences()
-        if (prefs.isNotEmpty()) {
-            builder.append("\nUser preferences:\n")
-            for (pref in prefs) {
-                builder.append("- ")
-                    .append(pref.key)
-                    .append(": ")
-                    .append(pref.value)
-                    .append("\n")
-            }
-        }
-
-        // Inject sanitized screen snapshot when AutoService is active
-        if (includeScreenSnapshot) {
+        val wantsSnapshot = includeScreenSnapshot && SecureVault.isSendSnapshot()
+        if (wantsSnapshot) {
             val service = AutoService.instance
             if (service != null) {
-                val rawSnapshot = service.screenSnapshot()
-                val safeSnapshot = InjectionGuard.wrapUntrustedSnapshot(rawSnapshot)
-                builder.append("\nCurrent phone screen snapshot (untrusted UI data):\n")
-                builder.append(safeSnapshot)
-            } else {
-                builder.append(
-                    "\nAccessibility service status: not enabled yet (UI tap/type/scroll tools need it enabled, while open_app, open_url, send_sms, remember, recall still work).\n"
-                )
+                val safe = InjectionGuard.wrapUntrustedSnapshot(service.screenSnapshot())
+                builder.append("\nCurrent screen (untrusted UI data):\n").append(safe)
             }
         }
 
@@ -60,6 +43,8 @@ class ContextBuilder(
     }
 
     companion object {
+        private const val MAX_MEMORIES = 15
+
         /**
          * Verbatim Buddy system prompt defining voice, JSON output rules, tools, and few-shot examples.
          */
@@ -96,6 +81,9 @@ Available tools:
 - open_url        {"url":"https://..."}
 - send_sms        {"number":"+1...","text":"hi"}
 - run_shell       {"cmd":"ls"}              requires Termux
+- volume          {"action":"up"}           up, down, mute or max
+- flashlight      {"on":true}
+- set_alarm       {"hour":7,"minute":30,"label":"wake up"}
 - remember        {"key":"wifi","value":"blue123"}
 - recall          {"key":"wifi"}
 

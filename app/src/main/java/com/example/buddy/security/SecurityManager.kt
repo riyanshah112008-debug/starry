@@ -1,131 +1,89 @@
 package com.example.buddy.security
 
+import android.content.Context
+import android.provider.Settings
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.example.buddy.AutoService
 import com.example.buddy.R
 import com.google.gson.JsonObject
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 /**
- * Enforces safety policies for Buddy's tool execution:
- * 1. Identifies destructive / sensitive tools requiring explicit user confirmation.
- * 2. Provides an optional biometric gate when device biometrics are enrolled.
- * 3. Maintains an app package allowlist / blocklist check so Buddy never launches
- *    restricted system/device-admin packages unexpectedly.
+ * Safety policies for tool execution:
+ * 1. Which tools need explicit user confirmation.
+ * 2. Optional biometric gate.
+ * 3. Package allow/block checks for open_app.
+ * 4. Whether the accessibility service is actually switched on.
  */
 object SecurityManager {
 
-    /**
-     * Tools that always pause for warm confirmation before execution.
-     */
-    private val DESTRUCTIVE_TOOLS = setOf(
-        "send_sms",
-        "run_shell"
-    )
+    /** Tools that always pause for warm confirmation before running. */
+    private val DESTRUCTIVE_TOOLS = setOf("send_sms", "run_shell")
 
-    /**
-     * Keywords in click_text or type_text that indicate a potentially destructive action
-     * (such as deleting items, factory reset, or submitting payments).
-     */
+    /** Words in a tapped label that mark it as potentially destructive. */
     private val SENSITIVE_ACTION_KEYWORDS = listOf(
-        "delete",
-        "erase",
-        "uninstall",
-        "pay",
-        "purchase",
-        "checkout",
-        "transfer",
-        "format",
-        "reset"
+        "delete", "erase", "uninstall", "pay", "purchase",
+        "checkout", "transfer", "format", "reset"
     )
 
-    /**
-     * Explicitly allowed common packages and prefix checks.
-     * Users can open normal apps, while sensitive system installers/admin receivers are blocked.
-     */
+    /** Packages we refuse to launch even if installed. */
     private val BLOCKED_PACKAGES = setOf(
         "com.android.packageinstaller",
         "com.google.android.packageinstaller",
         "com.android.ManagedProvisioning"
     )
 
-    val DEFAULT_ALLOWED_PACKAGES = setOf(
-        "com.android.chrome",
-        "com.google.android.apps.messaging",
-        "com.whatsapp",
-        "com.spotify.music",
-        "com.google.android.youtube",
-        "com.google.android.gm",
-        "com.google.android.apps.maps",
-        "com.android.settings",
-        "com.android.calculator2",
-        "com.google.android.calculator",
-        "com.google.android.calendar",
-        "com.termux"
-    )
-
-    /**
-     * Returns true if the given tool + arguments require user confirmation.
-     */
     fun requiresConfirmation(toolName: String, args: JsonObject): Boolean {
         if (toolName in DESTRUCTIVE_TOOLS) return true
-
         if (toolName == "click_text") {
-            val targetText = args.get("text")?.asString?.lowercase().orEmpty()
-            if (SENSITIVE_ACTION_KEYWORDS.any { keyword -> targetText.contains(keyword) }) {
-                return true
-            }
+            val target = args.get("text")?.asString?.lowercase().orEmpty()
+            if (SENSITIVE_ACTION_KEYWORDS.any { target.contains(it) }) return true
         }
         return false
     }
 
     /**
-     * Checks whether a package name is safe to launch.
-     * Validates package syntax and blocks dangerous system provisioning packages.
+     * Validates a package name before launching it.
      */
-    fun isPackageAllowed(
-        packageName: String,
-        customAllowlist: Set<String> = emptySet()
-    ): Boolean {
+    fun isPackageAllowed(packageName: String): Boolean {
         val cleaned = packageName.trim()
         if (cleaned.isEmpty()) return false
         if (cleaned in BLOCKED_PACKAGES) return false
-
-        // Validate standard Android package naming convention
-        val validFormat = Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+$")
-        if (!validFormat.matches(cleaned)) return false
-
-        // If customAllowlist is non-empty, enforce membership in either default or custom set
-        if (customAllowlist.isNotEmpty()) {
-            return cleaned in customAllowlist || cleaned in DEFAULT_ALLOWED_PACKAGES
-        }
-        return true
+        return Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+\$").matches(cleaned)
     }
 
     /**
-     * Prompts for biometric or device credential authentication if available on the device.
-     * If no biometric hardware/credentials are enrolled, returns true so the custom
-     * warm confirmation dialog remains the primary gate.
+     * True when the user has switched Buddy's accessibility service on.
+     * Android requires this to be done by hand - no app can enable itself.
+     */
+    fun isAccessibilityEnabled(context: Context): Boolean {
+        if (AutoService.isRunning()) return true
+        val enabled = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val serviceName = AutoService::class.java.name
+        return enabled.split(':').any { it.endsWith(serviceName) }
+    }
+
+    /**
+     * Biometric prompt if the device supports it; otherwise allow and rely on
+     * the warm confirmation dialog that already happened.
      */
     suspend fun authenticateIfAvailable(activity: FragmentActivity): Boolean {
-        val biometricManager = BiometricManager.from(activity)
         val authenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK or
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
-
-        val canAuth = biometricManager.canAuthenticate(authenticators)
-        if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            // Biometrics not configured on device; rely on the confirmation dialog decision
-            return true
-        }
+        val canAuth = BiometricManager.from(activity).canAuthenticate(authenticators)
+        if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) return true
 
         return suspendCancellableCoroutine { continuation ->
-            val executor = ContextCompat.getMainExecutor(activity)
             val prompt = BiometricPrompt(
                 activity,
-                executor,
+                ContextCompat.getMainExecutor(activity),
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                         if (continuation.isActive) continuation.resume(true)
@@ -136,18 +94,18 @@ object SecurityManager {
                     }
 
                     override fun onAuthenticationFailed() {
-                        // Allow user to retry within the system prompt UI
+                        // let the user retry in the system UI
                     }
                 }
             )
 
-            val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            val info = BiometricPrompt.PromptInfo.Builder()
                 .setTitle(activity.getString(R.string.biometric_title))
                 .setSubtitle(activity.getString(R.string.biometric_subtitle))
                 .setAllowedAuthenticators(authenticators)
                 .build()
 
-            prompt.authenticate(promptInfo)
+            prompt.authenticate(info)
         }
     }
 }

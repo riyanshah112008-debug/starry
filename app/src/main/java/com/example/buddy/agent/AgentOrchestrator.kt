@@ -2,20 +2,19 @@ package com.example.buddy.agent
 
 import com.example.buddy.ai.BuddyDecision
 import com.example.buddy.ai.ChatTurn
-import com.example.buddy.ai.LLMClient
+import com.example.buddy.ai.MissingKeyException
+import com.example.buddy.ai.ModelRouter
 import com.example.buddy.data.repo.AuditRepository
 import com.example.buddy.data.repo.ChatRepository
 import com.example.buddy.security.SecurityManager
+import com.example.buddy.security.SecureVault
 import com.google.gson.JsonObject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-/**
- * UI events emitted by [AgentOrchestrator] as Buddy thinks, calls tools,
- * asks for confirmation, and finishes or hits an error.
- */
+/** Events surfaced to the UI as warm chat bubbles. */
 sealed class AgentEvent {
     object Thinking : AgentEvent()
     data class ToolCompleted(val toolName: String, val result: String) : AgentEvent()
@@ -25,30 +24,31 @@ sealed class AgentEvent {
 }
 
 /**
- * Coordinates the multi-step agent loop (up to [MAX_ITERATIONS] = 12):
- * 1. Persists the user's message.
- * 2. Emits [AgentEvent.Thinking].
- * 3. Builds the system prompt (with long-term memory + sanitized screen snapshot).
- * 4. Calls OpenAI via [LLMClient] with JSON-only enforcement.
- * 5. If Buddy requests a tool:
- *    - Checks [SecurityManager.requiresConfirmation]; if sensitive, pauses and requests
- *      user confirmation via [confirmationGate].
- *    - Executes the tool via [ToolRegistry].
- *    - Logs the outcome to [AuditRepository].
- *    - Emits [AgentEvent.ToolCompleted] or [AgentEvent.Error] and feeds the tool result
- *      back into the next iteration so Buddy can finish or take the next step.
- * 6. If Buddy returns `{"done": true, "summary": "..."}`, persists and emits the warm reply.
+ * The agent loop, rewritten to be cheap:
+ *
+ * 1. A deterministic local router answers common commands with **zero** API calls.
+ * 2. Anything else gets **one** model call. When the tool succeeds we already know
+ *    what happened, so we phrase the reply locally instead of paying for a second
+ *    round-trip. (Turn on "multi-step" in Settings to allow follow-up calls.)
+ * 3. A hard token/call budget plus a response cache sit in front of the network.
+ *
+ * Destructive tools still pause for warm confirmation and are always audited.
  */
 class AgentOrchestrator(
     private val contextBuilder: ContextBuilder,
-    private val llmClient: LLMClient,
+    private val router: ModelRouter,
     private val toolRegistry: ToolRegistry,
+    private val localRouter: LocalCommandRouter,
     private val chatRepository: ChatRepository,
     private val auditRepository: AuditRepository
 ) {
 
     private val _events = MutableSharedFlow<AgentEvent>(extraBufferCapacity = 32)
     val events: SharedFlow<AgentEvent> = _events.asSharedFlow()
+
+    fun budgetSnapshot(): String = router.budgetSnapshot()
+
+    fun resetBudget() = router.resetBudget()
 
     suspend fun handleUserInput(
         sessionId: String,
@@ -57,47 +57,58 @@ class AgentOrchestrator(
     ) {
         val cleaned = userText.trim()
         if (cleaned.isEmpty()) return
-
         chatRepository.addUserMessage(sessionId, cleaned)
 
-        // Build rolling conversation history for the session
-        val storedHistory = chatRepository.getRecentHistory(sessionId, limit = 16)
-        val workingTurns = mutableListOf<ChatTurn>()
-        for (msg in storedHistory) {
-            val mappedRole = when (msg.role) {
-                ChatRepository.ROLE_USER -> "user"
-                ChatRepository.ROLE_ASSISTANT -> "assistant"
-                ChatRepository.ROLE_TOOL_RESULT -> "user"
-                else -> null
+        // ---- 1. Local fast path: never touches the network ----
+        when (val plan = localRouter.route(cleaned)) {
+            is LocalCommandRouter.Plan.Reply -> {
+                chatRepository.addAssistantMessage(sessionId, plan.text)
+                _events.emit(AgentEvent.AssistantReply(plan.text))
+                return
             }
-            if (mappedRole != null) {
-                val content = if (msg.role == ChatRepository.ROLE_TOOL_RESULT) {
-                    "Tool result (${msg.tool ?: "tool"}): ${msg.content}"
+            is LocalCommandRouter.Plan.Tool -> {
+                val result = executeWithGate(sessionId, plan.tool, plan.args, confirmationGate)
+                val reply = if (result == null) {
+                    "No worries, boss - I held off on that."
                 } else {
-                    msg.content
+                    WarmVoice.summarize(plan.tool, result.success, result.output)
                 }
-                workingTurns.add(ChatTurn(role = mappedRole, content = content))
+                chatRepository.addAssistantMessage(sessionId, reply)
+                _events.emit(AgentEvent.AssistantReply(reply))
+                return
             }
+            LocalCommandRouter.Plan.NeedsModel -> Unit
         }
+
+        // ---- 2. Model path ----
+        runModelLoop(sessionId, confirmationGate)
+    }
+
+    private suspend fun runModelLoop(
+        sessionId: String,
+        confirmationGate: suspend (toolName: String, args: JsonObject) -> Boolean
+    ) {
+        val turns = buildTurns(sessionId)
+        val multiStep = SecureVault.isMultiStep()
 
         for (iteration in 1..MAX_ITERATIONS) {
             _events.emit(AgentEvent.Thinking)
 
-            val systemPrompt = contextBuilder.buildSystemPrompt(includeScreenSnapshot = true)
-            val result = llmClient.completeJson(
-                systemPrompt = systemPrompt,
-                messages = workingTurns
-            )
+            val prompt = contextBuilder.buildSystemPrompt(includeScreenSnapshot = true)
+            val outcome = router.decide(prompt, turns)
 
-            if (result.isFailure) {
-                val ex = result.exceptionOrNull()
-                val isMissingKey = ex is LLMClient.MissingApiKeyException
-                val reason = ex?.message ?: "Connection hiccup"
-                _events.emit(AgentEvent.Error(reason = reason, isMissingKey = isMissingKey))
+            if (outcome.isFailure) {
+                val error = outcome.exceptionOrNull()
+                _events.emit(
+                    AgentEvent.Error(
+                        reason = error?.message ?: "Connection hiccup",
+                        isMissingKey = error is MissingKeyException
+                    )
+                )
                 return
             }
 
-            when (val decision = result.getOrThrow()) {
+            when (val decision = outcome.getOrThrow()) {
                 is BuddyDecision.Done -> {
                     val reply = decision.summary.ifBlank { "All set, boss." }
                     chatRepository.addAssistantMessage(sessionId, reply)
@@ -106,83 +117,85 @@ class AgentOrchestrator(
                 }
 
                 is BuddyDecision.ToolCall -> {
-                    val toolName = decision.tool
-                    val args = decision.args
-                    val argsString = args.toString()
-
-                    // Gate destructive or sensitive tools on user confirmation
-                    if (SecurityManager.requiresConfirmation(toolName, args)) {
-                        _events.emit(AgentEvent.ConfirmationNeeded(toolName, args))
-                        val approved = confirmationGate(toolName, args)
-                        if (!approved) {
-                            val cancelNote = "User cancelled $toolName"
-                            auditRepository.recordToolCall(
-                                sessionId = sessionId,
-                                toolName = toolName,
-                                argsJson = argsString,
-                                success = false,
-                                resultSummary = cancelNote
-                            )
-                            val friendlyCancel = "No worries, boss - I cancelled that."
-                            chatRepository.addAssistantMessage(sessionId, friendlyCancel)
-                            _events.emit(AgentEvent.AssistantReply(friendlyCancel))
-                            return
-                        }
+                    val result = executeWithGate(
+                        sessionId, decision.tool, decision.args, confirmationGate
+                    )
+                    if (result == null) {
+                        val reply = "No worries, boss - I held off on that."
+                        chatRepository.addAssistantMessage(sessionId, reply)
+                        _events.emit(AgentEvent.AssistantReply(reply))
+                        return
                     }
 
-                    // Execute tool
-                    val toolResult = toolRegistry.execute(toolName, args)
-                    auditRepository.recordToolCall(
-                        sessionId = sessionId,
-                        toolName = toolName,
-                        argsJson = argsString,
-                        success = toolResult.success,
-                        resultSummary = toolResult.output
-                    )
-
-                    if (toolResult.success) {
-                        _events.emit(
-                            AgentEvent.ToolCompleted(
-                                toolName = toolName,
-                                result = toolResult.output
-                            )
-                        )
-                    } else {
-                        _events.emit(
-                            AgentEvent.Error(
-                                reason = toolResult.output,
-                                isMissingKey = false
-                            )
-                        )
+                    val warm = WarmVoice.summarize(decision.tool, result.success, result.output)
+                    if (!multiStep) {
+                        // One model call per request - we already know the outcome.
+                        chatRepository.addAssistantMessage(sessionId, warm)
+                        _events.emit(AgentEvent.AssistantReply(warm))
+                        return
                     }
 
-                    // Append assistant tool call + tool observation to working context
-                    workingTurns.add(
+                    turns.add(ChatTurn("assistant", decision.rawJson))
+                    turns.add(
                         ChatTurn(
-                            role = "assistant",
-                            content = decision.rawJson
+                            "user",
+                            "Tool '${decision.tool}' finished (success=${result.success}): " +
+                                "${result.output}. Reply with the next JSON action or " +
+                                "{\"done\":true,\"summary\":\"...\"}."
                         )
                     )
-                    workingTurns.add(
-                        ChatTurn(
-                            role = "user",
-                            content = "Tool '$toolName' finished (success=${toolResult.success}): ${toolResult.output}. Respond with next JSON action or {\"done\":true,\"summary\":\"...\"}."
-                        )
-                    )
-
-                    // Brief pause so UI changes settle before the next screen snapshot
-                    delay(350L)
+                    delay(300L)
                 }
             }
         }
 
-        // If we hit MAX_ITERATIONS without a Done reply, wrap up warmly
-        val wrapUp = "Whew, that took a bunch of steps! Let me know if we need to keep going, boss."
-        chatRepository.addAssistantMessage(sessionId, wrapUp)
-        _events.emit(AgentEvent.AssistantReply(wrapUp))
+        val wrap = "Whew, that took a few steps! Tell me if we should keep going, boss."
+        chatRepository.addAssistantMessage(sessionId, wrap)
+        _events.emit(AgentEvent.AssistantReply(wrap))
+    }
+
+    /** Runs a tool behind the confirmation gate and the audit log. Null = cancelled. */
+    private suspend fun executeWithGate(
+        sessionId: String,
+        toolName: String,
+        args: JsonObject,
+        confirmationGate: suspend (toolName: String, args: JsonObject) -> Boolean
+    ): ToolResult? {
+        if (SecurityManager.requiresConfirmation(toolName, args)) {
+            _events.emit(AgentEvent.ConfirmationNeeded(toolName, args))
+            if (!confirmationGate(toolName, args)) {
+                auditRepository.recordToolCall(
+                    sessionId, toolName, args.toString(), false, "Cancelled by user"
+                )
+                return null
+            }
+        }
+
+        val result = toolRegistry.execute(toolName, args)
+        auditRepository.recordToolCall(
+            sessionId, toolName, args.toString(), result.success, result.output
+        )
+
+        if (result.success) _events.emit(AgentEvent.ToolCompleted(toolName, result.output))
+        else _events.emit(AgentEvent.Error(result.output))
+
+        return result
+    }
+
+    /** Small, truncated conversation window - big prompts cost real money. */
+    private suspend fun buildTurns(sessionId: String): MutableList<ChatTurn> {
+        val turns = mutableListOf<ChatTurn>()
+        chatRepository.getRecentHistory(sessionId, limit = 8).forEach { message ->
+            when (message.role) {
+                ChatRepository.ROLE_USER -> turns.add(ChatTurn("user", message.content.take(400)))
+                ChatRepository.ROLE_ASSISTANT -> turns.add(ChatTurn("assistant", message.content.take(400)))
+                else -> Unit
+            }
+        }
+        return turns
     }
 
     companion object {
-        const val MAX_ITERATIONS = 12
+        const val MAX_ITERATIONS = 4
     }
 }

@@ -6,7 +6,7 @@
     <string name="send_button">Send</string>
     <string name="voice_button">Talk</string>
     <string name="settings_title">Settings</string>
-    <string name="settings_api">Paste your OpenAI API key here</string>
+    <string name="settings_api">Paste your API key here</string>
     <string name="settings_save">Save it</string>
     <string name="settings_saved">Got it - saved.</string>
     <string name="status_ready">Ready when you are.</string>
@@ -20,7 +20,7 @@
     <string name="bubble_tool_result">Okay, done: %1$s</string>
     <string name="bubble_error">Ah, that didn\'t work: %1$s</string>
     <string name="bubble_confirmation">Heads up - this next bit is a big deal. Okay to go?</string>
-    <string name="welcome_message">Hey boss! I\'m Buddy. Tap the gear up top to drop in your OpenAI key, or just tell me what we\'re doing today.</string>
+    <string name="welcome_message">Hey boss! I\'m Buddy. Most stuff works with no setup at all - try "open chrome", "remember my wifi is blue123" or "volume up". Tap the gear to add an AI key when you want me thinking for you.</string>
 
     <!-- Confirmation dialog copy (warm, not scary) -->
     <string name="confirm_default_title">Heads up</string>
@@ -37,6 +37,38 @@
     <string name="confirm_shell_body">Buddy wants to run: %1$s. Cool with that?</string>
     <string name="confirm_shell_allow">Go for it</string>
     <string name="confirm_shell_deny">Stop</string>
+
+    <!-- Hands-free / accessibility -->
+    <string name="accessibility_off">Hands-free control: OFF - tap to switch on</string>
+    <string name="accessibility_on">Hands-free control: ON</string>
+    <string name="hands_free_off">Hands-free voice</string>
+    <string name="hands_free_on">Listening...</string>
+    <string name="hands_free_hint">Hands-free listening is on. Talk any time - tap again to stop.</string>
+    <string name="accessibility_explainer">Android needs you to switch this on yourself - no app is allowed to do it for you. It\'s one tap, and only tapping/typing/scrolling needs it. Opening apps, texting, volume, torch and remembering things all work without it.</string>
+
+    <!-- AI settings -->
+    <string name="settings_ai_title">AI settings</string>
+    <string name="settings_current">Using: %1$s</string>
+    <string name="settings_change_model">Change provider &amp; model</string>
+    <string name="settings_key">API key for %1$s</string>
+    <string name="settings_base_url">Base URL (local / custom only)</string>
+    <string name="settings_test">Test connection</string>
+    <string name="settings_testing">Testing...</string>
+    <string name="settings_test_ok">Key works, boss.</string>
+    <string name="settings_test_fail">That didn\'t work: %1$s</string>
+    <string name="settings_routing">Routing: %1$s</string>
+    <string name="settings_budget">Budget: %1$s</string>
+    <string name="settings_budget_used">Spent: %1$s</string>
+    <string name="settings_reset_budget">Reset the spend counter</string>
+    <string name="settings_accessibility">Turn on hands-free control</string>
+    <string name="toggle_snapshot">Send screen contents to the model (costs more)</string>
+    <string name="toggle_multistep">Let Buddy take several AI steps per request</string>
+    <string name="toggle_speak">Speak replies out loud</string>
+    <string name="pick_provider">Which AI provider?</string>
+    <string name="pick_model">Which model?</string>
+    <string name="custom_model">Custom model id...</string>
+    <string name="custom_model_hint">Type any model id</string>
+    <string name="saved_no_key">Saved. Add a key when you\'re ready.</string>
 
     <!-- Settings & Accessibility & Voice helper strings -->
     <string name="settings_cancel">Never mind</string>

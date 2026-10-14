@@ -168,3 +168,51 @@ Tap **Talk** (voice) or type and hit **Send**. Each row is a manual test.
 - `open_app` is restricted by `SecurityManager.isPackageAllowed(...)`.
 - Nothing is hardcoded: no API keys, no credentials in the repo.
 
+---
+
+## 10. What's new in 2.0 — read this before testing
+
+Full detail in [IMPROVEMENTS.md](IMPROVEMENTS.md). The short version:
+
+**You no longer need an API key to test most things.** Try these with *no key and
+no accessibility* straight after install — they make **zero** API calls:
+
+| Say | Result |
+|---|---|
+| `hi` | `Hey boss. What're we up to?` |
+| `what time is it` | speaks the time |
+| `open chrome` | launches Chrome |
+| `open https://example.com` | opens the page |
+| `remember my wifi password is blue123` | `Locked it in. Won't forget that.` |
+| `what's my wifi password` | `It's blue123, mate.` |
+| `volume up` / `turn volume down` | changes volume |
+| `turn on the torch` | flashlight on |
+| `go home` / `scroll down` | needs accessibility |
+| `text 5551234 I'll be late` | confirmation, then sends |
+
+**Hands-free voice.** Tap **Hands-free voice** in the header. The mic stays
+cycling so you can keep talking without tapping, and replies are spoken aloud.
+Toggle speech in Settings.
+
+**Accessibility is still needed** for `click_text`, `type_text`, `scroll`, `back`
+and `home` — Android requires you to enable it yourself, one tap from the header
+chip (`Hands-free control: OFF - tap to switch on`).
+
+**Multi-model.** Settings → **Change provider & model** lets you pick OpenAI,
+Anthropic, Gemini, OpenRouter (one key, hundreds of models), Groq, Mistral,
+DeepSeek, Together, a local **Ollama** (no key, no cost), or a custom
+OpenAI-compatible URL. You can also type any custom model id.
+
+**Routing strategies** (Settings → Routing): `AUTO`, `BEST`, `FALLBACK`, and
+`ENSEMBLE` (asks up to 3 models in parallel and majority-votes the action).
+
+**Spend control.** Settings shows `Spent: 0/8 calls - ~0/9000 tokens` and lets you
+cycle the budget (4/8/20/50 calls). When the cap is hit Buddy stops and says so
+rather than draining your key. **Test connection** makes the cheapest possible
+call to prove a key works.
+
+**Two switches worth knowing** (both default OFF to save money):
+- *Send screen contents to the model* — off means prompts stay tiny
+- *Let Buddy take several AI steps per request* — off means one model call per command
+
+

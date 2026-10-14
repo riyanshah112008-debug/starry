@@ -4,14 +4,19 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -21,50 +26,49 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.buddy.agent.AgentEvent
+import com.example.buddy.ai.ModelCatalog
+import com.example.buddy.ai.ProviderKind
+import com.example.buddy.ai.RoutingStrategy
 import com.example.buddy.data.repo.ChatRepository
 import com.example.buddy.databinding.ActivityMainBinding
+import com.example.buddy.security.SecurityManager
 import com.example.buddy.security.SecureVault
 import com.example.buddy.ui.ConfirmDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.Locale
 
 /**
- * Main chat interface for Buddy using ViewBinding (no Jetpack Compose).
- * Features:
- * - Warm chat bubble timeline backed by Room Flow
- * - Voice input button powered by Android's [SpeechRecognizer]
- * - Text input field with IME Send support
- * - Settings gear dialog to save the OpenAI API key in [SecureVault] and jump to
- *   Accessibility Settings
- * - Observes [AgentEvent]s and renders Thinking, Tool result, Confirmation, and Error
- *   bubbles in Buddy's warm voice.
+ * Buddy's chat screen.
+ *
+ * Notable behaviours:
+ * - Most commands work with **no API key and no accessibility** (local fast path).
+ * - Hands-free mode keeps the mic open in a loop and speaks replies out loud.
+ * - The header shows whether accessibility is on, and lets you fix it in one tap.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var chatAdapter: ChatAdapter
 
-    private val app: AiAgentApp
-        get() = application as AiAgentApp
+    private val app: AiAgentApp get() = application as AiAgentApp
 
     private var speechRecognizer: SpeechRecognizer? = null
-    private var isListening: Boolean = false
+    private var isListening = false
+    private var handsFree = false
+
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val micPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            startVoiceRecognition()
-        } else {
-            Toast.makeText(
-                this,
-                getString(R.string.voice_permission_needed),
-                Toast.LENGTH_SHORT
-            ).show()
-        }
+        if (granted) startListening() else toast(getString(R.string.voice_permission_needed))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,25 +79,37 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupInputs()
         setupSpeechRecognizer()
+        setupTts()
         observeChatHistory()
         observeAgentEvents()
-        seedWelcomeMessageIfNeeded()
+        seedWelcomeIfNeeded()
+
+        handsFree = SecureVault.isHandsFree()
+        renderHandsFreeButton()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshStatus()
+    }
+
+    override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
+        tts?.shutdown()
+        tts = null
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        super.onDestroy()
     }
 
     private fun setupRecyclerView() {
         chatAdapter = ChatAdapter()
-        val layoutManager = LinearLayoutManager(this).apply {
-            stackFromEnd = true
-        }
-        binding.rvChat.layoutManager = layoutManager
+        binding.rvChat.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         binding.rvChat.adapter = chatAdapter
     }
 
     private fun setupInputs() {
-        binding.btnSend.setOnClickListener {
-            submitCurrentMessage()
-        }
-
+        binding.btnSend.setOnClickListener { submitCurrentMessage() }
         binding.etMessage.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 submitCurrentMessage()
@@ -102,43 +118,10 @@ class MainActivity : AppCompatActivity() {
                 false
             }
         }
-
-        binding.btnVoice.setOnClickListener {
-            toggleVoiceInput()
-        }
-
-        binding.btnSettings.setOnClickListener {
-            showSettingsDialog()
-        }
-    }
-
-    private fun submitCurrentMessage() {
-        val text = binding.etMessage.text?.toString()?.trim().orEmpty()
-        if (text.isEmpty()) return
-
-        binding.etMessage.setText("")
-
-        if (!SecureVault.hasApiKey()) {
-            lifecycleScope.launch {
-                app.chatRepository.addUserMessage(SESSION_ID, text)
-                app.chatRepository.addEventBubble(
-                    sessionId = SESSION_ID,
-                    role = ChatRepository.ROLE_ERROR,
-                    content = getString(R.string.error_no_key)
-                )
-            }
-            return
-        }
-
-        lifecycleScope.launch {
-            app.agentOrchestrator.handleUserInput(
-                sessionId = SESSION_ID,
-                userText = text,
-                confirmationGate = { toolName, args ->
-                    ConfirmDialog.confirm(this@MainActivity, toolName, args)
-                }
-            )
-        }
+        binding.btnVoice.setOnClickListener { toggleVoiceInput() }
+        binding.btnHandsFree.setOnClickListener { toggleHandsFree() }
+        binding.btnSettings.setOnClickListener { showAiSettings() }
+        binding.tvAccessibility.setOnClickListener { openAccessibilitySettings() }
     }
 
     private fun observeChatHistory() {
@@ -164,18 +147,18 @@ class MainActivity : AppCompatActivity() {
                             binding.tvStatusSubtitle.text = getString(R.string.status_thinking)
                             app.chatRepository.clearThinkingBubbles(SESSION_ID)
                             app.chatRepository.addEventBubble(
-                                sessionId = SESSION_ID,
-                                role = ChatRepository.ROLE_THINKING,
-                                content = getString(R.string.bubble_thinking)
+                                SESSION_ID,
+                                ChatRepository.ROLE_THINKING,
+                                getString(R.string.bubble_thinking)
                             )
                         }
 
                         is AgentEvent.ToolCompleted -> {
                             app.chatRepository.clearThinkingBubbles(SESSION_ID)
                             app.chatRepository.addEventBubble(
-                                sessionId = SESSION_ID,
-                                role = ChatRepository.ROLE_TOOL_RESULT,
-                                content = getString(R.string.bubble_tool_result, event.result),
+                                SESSION_ID,
+                                ChatRepository.ROLE_TOOL_RESULT,
+                                getString(R.string.bubble_tool_result, event.result),
                                 tool = event.toolName
                             )
                         }
@@ -183,9 +166,9 @@ class MainActivity : AppCompatActivity() {
                         is AgentEvent.ConfirmationNeeded -> {
                             app.chatRepository.clearThinkingBubbles(SESSION_ID)
                             app.chatRepository.addEventBubble(
-                                sessionId = SESSION_ID,
-                                role = ChatRepository.ROLE_CONFIRMATION,
-                                content = getString(R.string.bubble_confirmation),
+                                SESSION_ID,
+                                ChatRepository.ROLE_CONFIRMATION,
+                                getString(R.string.bubble_confirmation),
                                 tool = event.toolName,
                                 args = event.args.toString()
                             )
@@ -193,22 +176,23 @@ class MainActivity : AppCompatActivity() {
 
                         is AgentEvent.AssistantReply -> {
                             app.chatRepository.clearThinkingBubbles(SESSION_ID)
-                            binding.tvStatusSubtitle.text = getString(R.string.status_done)
+                            refreshStatus()
+                            speak(event.summary)
+                            if (handsFree) scheduleRestart()
                         }
 
                         is AgentEvent.Error -> {
                             app.chatRepository.clearThinkingBubbles(SESSION_ID)
-                            binding.tvStatusSubtitle.text = getString(R.string.error_generic)
-                            val bubbleText = if (event.isMissingKey) {
+                            val text = if (event.isMissingKey) {
                                 getString(R.string.error_no_key)
                             } else {
                                 getString(R.string.bubble_error, event.reason)
                             }
                             app.chatRepository.addEventBubble(
-                                sessionId = SESSION_ID,
-                                role = ChatRepository.ROLE_ERROR,
-                                content = bubbleText
+                                SESSION_ID, ChatRepository.ROLE_ERROR, text
                             )
+                            refreshStatus()
+                            if (handsFree) scheduleRestart()
                         }
                     }
                 }
@@ -216,16 +200,74 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun seedWelcomeMessageIfNeeded() {
+    private fun submitCurrentMessage() {
+        val text = binding.etMessage.text?.toString()?.trim().orEmpty()
+        if (text.isEmpty()) return
+        binding.etMessage.setText("")
         lifecycleScope.launch {
-            val recent = app.chatRepository.getRecentHistory(SESSION_ID, limit = 1)
-            if (recent.isEmpty()) {
+            app.agentOrchestrator.handleUserInput(
+                sessionId = SESSION_ID,
+                userText = text,
+                confirmationGate = { tool, args ->
+                    ConfirmDialog.confirm(this@MainActivity, tool, args)
+                }
+            )
+        }
+    }
+
+    private fun seedWelcomeIfNeeded() {
+        lifecycleScope.launch {
+            if (app.chatRepository.getRecentHistory(SESSION_ID, limit = 1).isEmpty()) {
                 app.chatRepository.addAssistantMessage(
-                    sessionId = SESSION_ID,
-                    content = getString(R.string.welcome_message)
+                    SESSION_ID, getString(R.string.welcome_message)
                 )
             }
         }
+    }
+
+    private fun refreshStatus() {
+        val enabled = SecurityManager.isAccessibilityEnabled(this)
+        binding.tvAccessibility.text = getString(
+            if (enabled) R.string.accessibility_on else R.string.accessibility_off
+        )
+        binding.tvAccessibility.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (enabled) R.color.buddy_amber_primary else R.color.buddy_text_secondary
+            )
+        )
+        binding.tvStatusSubtitle.text = if (handsFree && isListening) {
+            getString(R.string.voice_listening)
+        } else {
+            getString(R.string.settings_budget_used, app.agentOrchestrator.budgetSnapshot())
+        }
+    }
+
+    private fun openAccessibilitySettings() {
+        toast(getString(R.string.accessibility_explainer))
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    // ---------------- voice in ----------------
+
+    private fun setupTts() {
+        tts = TextToSpeech(this) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) {
+                tts?.language = Locale.getDefault()
+            }
+        }
+    }
+
+    private fun speak(text: String) {
+        if (!SecureVault.isSpeakReplies()) return
+        val engine = tts ?: return
+        if (!ttsReady) return
+        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "buddy-${System.currentTimeMillis()}")
     }
 
     private fun setupSpeechRecognizer() {
@@ -235,7 +277,7 @@ class MainActivity : AppCompatActivity() {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     isListening = true
-                    binding.tvStatusSubtitle.text = getString(R.string.voice_listening)
+                    refreshStatus()
                 }
 
                 override fun onBeginningOfSpeech() {}
@@ -244,28 +286,30 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onEndOfSpeech() {
                     isListening = false
-                    binding.tvStatusSubtitle.text = getString(R.string.status_ready)
                 }
 
                 override fun onError(error: Int) {
                     isListening = false
-                    binding.tvStatusSubtitle.text = getString(R.string.status_ready)
-                    Toast.makeText(
-                        this@MainActivity,
-                        getString(R.string.voice_error),
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    if (handsFree) {
+                        scheduleRestart()
+                    } else {
+                        toast(getString(R.string.voice_error))
+                        refreshStatus()
+                    }
                 }
 
                 override fun onResults(results: Bundle?) {
                     isListening = false
-                    binding.tvStatusSubtitle.text = getString(R.string.status_ready)
-                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    val spoken = matches?.firstOrNull()?.trim().orEmpty()
+                    val spoken = results
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                        ?.trim()
+                        .orEmpty()
                     if (spoken.isNotEmpty()) {
                         binding.etMessage.setText(spoken)
-                        binding.etMessage.setSelection(spoken.length)
                         submitCurrentMessage()
+                    } else if (handsFree) {
+                        scheduleRestart()
                     }
                 }
 
@@ -276,93 +320,268 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleVoiceInput() {
-        val hasAudioPermission = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasAudioPermission) {
-            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        if (isListening) {
+            stopListening()
             return
         }
-
-        if (isListening) {
-            speechRecognizer?.stopListening()
-            isListening = false
-            binding.tvStatusSubtitle.text = getString(R.string.status_ready)
-        } else {
-            startVoiceRecognition()
-        }
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) startListening() else micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    private fun startVoiceRecognition() {
-        val recognizer = speechRecognizer
-        if (recognizer == null) {
-            Toast.makeText(this, getString(R.string.voice_error), Toast.LENGTH_SHORT).show()
+    private fun startListening() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            toast(getString(R.string.voice_error))
             return
         }
+        if (speechRecognizer == null) setupSpeechRecognizer()
+        val recognizer = speechRecognizer ?: return
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-            )
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
         recognizer.startListening(intent)
+        isListening = true
+        refreshStatus()
     }
 
-    private fun showSettingsDialog() {
-        val density = resources.displayMetrics.density
-        val pad = (20 * density).toInt()
+    private fun stopListening() {
+        isListening = false
+        speechRecognizer?.stopListening()
+        refreshStatus()
+    }
 
-        val container = LinearLayout(this).apply {
+    /** Hands-free: keep the mic cycling so you never have to tap again. */
+    private fun scheduleRestart() {
+        if (!handsFree) return
+        mainHandler.postDelayed({
+            if (handsFree && !isFinishing && !isListening) startListening()
+        }, RESTART_DELAY_MS)
+    }
+
+    private fun toggleHandsFree() {
+        handsFree = !handsFree
+        SecureVault.setHandsFree(handsFree)
+        renderHandsFreeButton()
+        if (handsFree) {
+            toast(getString(R.string.hands_free_hint))
+            val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+            if (granted) startListening() else micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            stopListening()
+        }
+    }
+
+    private fun renderHandsFreeButton() {
+        binding.btnHandsFree.text = getString(
+            if (handsFree) R.string.hands_free_on else R.string.hands_free_off
+        )
+    }
+
+    // ---------------- AI settings ----------------
+
+    private fun showAiSettings() {
+        val pad = (18 * resources.displayMetrics.density).toInt()
+        val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad / 2, pad, pad / 4)
+            setPadding(pad, pad / 2, pad, pad / 2)
+        }
+        val provider = SecureVault.getProvider()
+
+        fun caption(text: String): TextView = TextView(this).apply {
+            this.text = text
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.buddy_text_secondary))
+            textSize = 12f
+            setPadding(0, pad / 2, 0, pad / 8)
         }
 
-        val apiInput = EditText(this).apply {
-            hint = getString(R.string.settings_api)
+        col.addView(caption(getString(R.string.settings_current, "${provider.label} - ${SecureVault.getModel()}")))
+        col.addView(caption(getString(R.string.settings_budget_used, app.agentOrchestrator.budgetSnapshot())))
+
+        val changeBtn = MaterialButton(this).apply { text = getString(R.string.settings_change_model) }
+        col.addView(changeBtn)
+
+        col.addView(caption(getString(R.string.settings_key, provider.label)))
+        val keyInput = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setText(SecureVault.getApiKey().orEmpty())
+            hint = getString(R.string.settings_api)
+            setText(SecureVault.getKey(provider.id).orEmpty())
             setTextColor(ContextCompat.getColor(this@MainActivity, R.color.buddy_text_primary))
-            setHintTextColor(ContextCompat.getColor(this@MainActivity, R.color.buddy_text_secondary))
         }
-        container.addView(apiInput)
+        col.addView(keyInput)
 
-        val accessibilityBtn = MaterialButton(this).apply {
-            text = getString(R.string.settings_enable_accessibility)
+        col.addView(caption(getString(R.string.settings_base_url)))
+        val baseInput = EditText(this).apply {
+            inputType = InputType.TYPE_TEXT_VARIATION_URI
+            hint = provider.defaultBaseUrl ?: "https://..."
+            setText(SecureVault.getBaseUrl(provider.id).orEmpty())
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.buddy_text_primary))
+        }
+        col.addView(baseInput)
+
+        val testBtn = MaterialButton(this).apply {
+            text = getString(R.string.settings_test)
             setOnClickListener {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                SecureVault.saveKey(provider.id, keyInput.text.toString())
+                SecureVault.saveBaseUrl(provider.id, baseInput.text.toString())
+                text = getString(R.string.settings_testing)
+                lifecycleScope.launch {
+                    val result = app.modelRouter.testConnection()
+                    toast(
+                        if (result.isSuccess) getString(R.string.settings_test_ok)
+                        else getString(
+                            R.string.settings_test_fail,
+                            result.exceptionOrNull()?.message ?: "?"
+                        )
+                    )
+                    text = getString(R.string.settings_test)
+                    refreshStatus()
+                }
             }
         }
-        container.addView(accessibilityBtn)
+        col.addView(testBtn)
 
-        MaterialAlertDialogBuilder(this, R.style.Theme_Buddy_Dialog)
-            .setTitle(getString(R.string.settings_title))
-            .setView(container)
+        val strategyBtn = MaterialButton(this).apply {
+            text = getString(
+                R.string.settings_routing,
+                RoutingStrategy.fromId(SecureVault.getStrategy()).label
+            )
+            setOnClickListener {
+                val all = RoutingStrategy.values()
+                val index = all.indexOfFirst { it.id == SecureVault.getStrategy() }
+                val next = all[(index + 1) % all.size]
+                SecureVault.saveStrategy(next.id)
+                text = getString(R.string.settings_routing, next.label)
+            }
+        }
+        col.addView(strategyBtn)
+
+        val budgetBtn = MaterialButton(this).apply {
+            text = getString(
+                R.string.settings_budget,
+                "${SecureVault.getMaxCalls()} calls / ${SecureVault.getMaxTokens()} tokens"
+            )
+            setOnClickListener {
+                val presets = listOf(4 to 4000, 8 to 9000, 20 to 25000, 50 to 60000)
+                val index = presets.indexOfFirst { it.first == SecureVault.getMaxCalls() }
+                val next = presets[(index + 1) % presets.size]
+                SecureVault.saveBudget(next.first, next.second)
+                app.modelRouter.setLimits(next.first, next.second)
+                text = getString(R.string.settings_budget, "${next.first} calls / ${next.second} tokens")
+            }
+        }
+        col.addView(budgetBtn)
+
+        fun addSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+            col.addView(
+                SwitchMaterial(this).apply {
+                    text = label
+                    isChecked = checked
+                    setTextColor(ContextCompat.getColor(this@MainActivity, R.color.buddy_text_primary))
+                    setOnCheckedChangeListener { _, value -> onChange(value) }
+                }
+            )
+        }
+
+        addSwitch(getString(R.string.toggle_speak), SecureVault.isSpeakReplies()) {
+            SecureVault.setSpeakReplies(it)
+        }
+        addSwitch(getString(R.string.toggle_snapshot), SecureVault.isSendSnapshot()) {
+            SecureVault.setSendSnapshot(it)
+        }
+        addSwitch(getString(R.string.toggle_multistep), SecureVault.isMultiStep()) {
+            SecureVault.setMultiStep(it)
+        }
+
+        col.addView(
+            MaterialButton(this).apply {
+                text = getString(R.string.settings_accessibility)
+                setOnClickListener { openAccessibilitySettings() }
+            }
+        )
+        col.addView(caption(getString(R.string.accessibility_explainer)))
+
+        val dialog = MaterialAlertDialogBuilder(this, R.style.Theme_Buddy_Dialog)
+            .setTitle(getString(R.string.settings_ai_title))
+            .setView(ScrollView(this).apply { addView(col) })
             .setPositiveButton(getString(R.string.settings_save)) { _, _ ->
-                val newKey = apiInput.text?.toString()?.trim().orEmpty()
-                SecureVault.saveApiKey(newKey)
-                Toast.makeText(
-                    this,
-                    getString(R.string.settings_saved),
-                    Toast.LENGTH_SHORT
-                ).show()
-                binding.tvStatusSubtitle.text = getString(R.string.status_ready)
+                SecureVault.saveKey(provider.id, keyInput.text.toString())
+                SecureVault.saveBaseUrl(provider.id, baseInput.text.toString())
+                toast(getString(R.string.settings_saved))
+                refreshStatus()
+            }
+            .setNegativeButton(getString(R.string.settings_cancel), null)
+            .create()
+
+        changeBtn.setOnClickListener {
+            dialog.dismiss()
+            showProviderPicker()
+        }
+
+        dialog.show()
+    }
+
+    private fun showProviderPicker() {
+        val providers = ProviderKind.values()
+        MaterialAlertDialogBuilder(this, R.style.Theme_Buddy_Dialog)
+            .setTitle(getString(R.string.pick_provider))
+            .setItems(providers.map { it.label }.toTypedArray()) { _, which ->
+                val chosen = providers[which]
+                SecureVault.saveProvider(chosen.id)
+                SecureVault.saveModel(ModelCatalog.defaultFor(chosen))
+                showModelPicker(chosen)
             }
             .setNegativeButton(getString(R.string.settings_cancel), null)
             .show()
     }
 
-    override fun onDestroy() {
-        speechRecognizer?.destroy()
-        speechRecognizer = null
-        super.onDestroy()
+    private fun showModelPicker(provider: ProviderKind) {
+        val models = ModelCatalog.forProvider(provider)
+        val labels = (models.map { "${it.label}  (${it.tier.label})" } +
+            getString(R.string.custom_model)).toTypedArray()
+        MaterialAlertDialogBuilder(this, R.style.Theme_Buddy_Dialog)
+            .setTitle(getString(R.string.pick_model))
+            .setItems(labels) { _, which ->
+                if (which < models.size) {
+                    SecureVault.saveModel(models[which].id)
+                    toast(getString(R.string.settings_current, "${provider.label} - ${models[which].id}"))
+                } else {
+                    promptCustomModel(provider)
+                }
+            }
+            .setNegativeButton(getString(R.string.settings_cancel), null)
+            .show()
+    }
+
+    private fun promptCustomModel(provider: ProviderKind) {
+        val pad = (18 * resources.displayMetrics.density).toInt()
+        val input = EditText(this).apply {
+            hint = getString(R.string.custom_model_hint)
+            setText(SecureVault.getModel())
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.buddy_text_primary))
+        }
+        MaterialAlertDialogBuilder(this, R.style.Theme_Buddy_Dialog)
+            .setTitle(getString(R.string.custom_model))
+            .setView(LinearLayout(this).apply {
+                setPadding(pad, pad / 2, pad, 0)
+                addView(input)
+            })
+            .setPositiveButton(getString(R.string.settings_save)) { _, _ ->
+                val id = input.text.toString().trim()
+                if (id.isNotEmpty()) {
+                    SecureVault.saveModel(id)
+                    toast(getString(R.string.settings_current, "${provider.label} - $id"))
+                }
+            }
+            .setNegativeButton(getString(R.string.settings_cancel), null)
+            .show()
     }
 
     companion object {
         private const val SESSION_ID = "default_buddy_session"
+        private const val RESTART_DELAY_MS = 700L
     }
 }
