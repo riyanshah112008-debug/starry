@@ -18,16 +18,12 @@ enum class RoutingStrategy(val id: String, val label: String) {
 
 /**
  * Picks which model(s) to ask, in which order, with a hard budget and a cache
- * in front. This is what makes "a combination of every AI model" real:
+ * in front.
  *
- * - [RoutingStrategy.AUTO]      cheapest working model, preferring the user's pick
- * - [RoutingStrategy.BEST]      highest-tier model that has a key
- * - [RoutingStrategy.FALLBACK]  walk down the list until one answers
- * - [RoutingStrategy.ENSEMBLE]  ask up to 3 models in parallel and majority-vote
- *
- * Voting is applied to the *action* (tool + normalised args) because that's the
- * only part of a decision with a single right answer; chit-chat takes the first
- * reply.
+ * Only providers the user has actually set up are ever considered. That matters:
+ * an earlier version treated "needs no API key" as "is ready", so a local Ollama
+ * on http://127.0.0.1 got tried on every single request and failed with
+ * "CLEARTEXT communication to 127.0.0.1 not permitted".
  */
 class ModelRouter(
     private val rateLimiter: RateLimiter = RateLimiter(maxCallsPerMinute = 12),
@@ -41,7 +37,6 @@ class ModelRouter(
 
     fun budgetSnapshot(): String = budget.snapshot()
 
-    /** Settings can move the ceiling without restarting the app. */
     fun setLimits(maxCalls: Int, maxTokens: Int) = budget.setLimits(maxCalls, maxTokens)
 
     /** Cheapest possible round-trip to prove a key works. */
@@ -60,18 +55,22 @@ class ModelRouter(
         val candidates = candidateModels(strategy)
 
         if (candidates.isEmpty()) {
-            return@coroutineScope Result.failure(
-                IllegalStateException("No model is ready - add an API key in Settings.")
-            )
+            return@coroutineScope Result.failure(NoProviderConfiguredException())
         }
 
+        val maxAttempts = when (strategy) {
+            RoutingStrategy.AUTO -> 2
+            RoutingStrategy.BEST -> 3
+            RoutingStrategy.FALLBACK -> 4
+            RoutingStrategy.ENSEMBLE -> 3
+        }
+        val picks = candidates.take(maxAttempts)
         val estimated = TokenBudget.estimate(
             systemPrompt,
             turns.joinToString(" ") { it.content }
         )
 
-        if (strategy == RoutingStrategy.ENSEMBLE) {
-            val picks = candidates.take(3)
+        if (strategy == RoutingStrategy.ENSEMBLE && picks.size > 1) {
             val results = picks
                 .map { choice -> async { runOne(choice, systemPrompt, turns, maxOutputTokens, estimated) } }
                 .map { it.await() }
@@ -87,7 +86,7 @@ class ModelRouter(
         }
 
         var lastError: Throwable? = null
-        for (choice in candidates.take(4)) {
+        for (choice in picks) {
             val outcome = runOne(choice, systemPrompt, turns, maxOutputTokens, estimated)
             outcome.getOrNull()?.let { return@coroutineScope Result.success(it) }
             lastError = outcome.exceptionOrNull()
@@ -95,31 +94,52 @@ class ModelRouter(
         Result.failure(lastError ?: IllegalStateException("No model answered."))
     }
 
-    private fun candidateModels(strategy: RoutingStrategy): List<ModelChoice> {
-        val preferred = SecureVault.getModel()
-        val preferredProvider = SecureVault.getProvider()
-
-        fun usable(kind: ProviderKind): Boolean {
-            if (!kind.requiresKey) return true
-            return !SecureVault.getKey(kind.id).isNullOrBlank()
+    /**
+     * A provider counts as usable only when the user has deliberately set it up:
+     * keyed providers need a key, keyless ones (Ollama / custom) need a base URL.
+     */
+    private fun isConfigured(kind: ProviderKind): Boolean =
+        if (kind.requiresKey) {
+            !SecureVault.getKey(kind.id).isNullOrBlank()
+        } else {
+            !SecureVault.getBaseUrl(kind.id).isNullOrBlank()
         }
+
+    private fun candidateModels(strategy: RoutingStrategy): List<ModelChoice> {
+        val preferredProvider = SecureVault.getProvider()
+        val preferredModel = SecureVault.getModel()
+
+        val configured = ProviderKind.values().filter { isConfigured(it) }
+        if (configured.isEmpty()) return emptyList()
 
         val list = mutableListOf<ModelChoice>()
         fun add(kind: ProviderKind, model: String) {
-            if (!usable(kind)) return
+            if (!isConfigured(kind)) return
             if (list.any { it.provider == kind && it.model == model }) return
             list.add(ModelChoice(kind, model))
         }
 
-        add(preferredProvider, preferred)
+        // The user's explicit pick goes first when it's actually set up.
+        if (isConfigured(preferredProvider)) add(preferredProvider, preferredModel)
 
-        val ranked = if (strategy == RoutingStrategy.BEST) {
-            ModelCatalog.ALL.sortedByDescending { it.tier.costRank }
-        } else {
-            ModelCatalog.ALL.sortedBy { it.tier.costRank }
+        // Then the cheapest models of every other configured provider.
+        ModelCatalog.ALL
+            .filter { isConfigured(it.provider) }
+            .sortedBy { it.tier.costRank }
+            .forEach { add(it.provider, it.id) }
+
+        // A configured provider with no catalogue entry still gets a slot.
+        configured.forEach { kind ->
+            if (list.none { it.provider == kind }) {
+                list.add(ModelChoice(kind, ModelCatalog.defaultFor(kind)))
+            }
         }
-        ranked.forEach { add(it.provider, it.id) }
-        return list
+
+        return if (strategy == RoutingStrategy.BEST) {
+            list.sortedByDescending { ModelCatalog.find(it.model)?.tier?.costRank ?: 1 }
+        } else {
+            list
+        }
     }
 
     private suspend fun runOne(
@@ -132,6 +152,13 @@ class ModelRouter(
         val cacheKey = ResponseCache.key(choice.provider.id, choice.model, systemPrompt, turns)
         cache.get(cacheKey)?.let { return Result.success(it) }
 
+        // Resolve the provider BEFORE spending, so a misconfigured one is free.
+        val provider = try {
+            providerFor(choice.provider)
+        } catch (t: Throwable) {
+            return Result.failure(t)
+        }
+
         if (!budget.canSpend(estimated)) {
             return Result.failure(
                 IllegalStateException(
@@ -142,10 +169,9 @@ class ModelRouter(
 
         return try {
             rateLimiter.acquire()
+            val result = provider.completeJson(choice.model, systemPrompt, turns, maxOutputTokens)
             budget.charge(estimated)
-            val provider = providerFor(choice.provider)
-            provider.completeJson(choice.model, systemPrompt, turns, maxOutputTokens)
-                .onSuccess { cache.put(cacheKey, it) }
+            result.onSuccess { cache.put(cacheKey, it) }
         } catch (t: Throwable) {
             Result.failure(t)
         }

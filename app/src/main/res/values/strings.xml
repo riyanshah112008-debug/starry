@@ -77,6 +77,9 @@
     <string name="accessibility_service_description">Lets Buddy tap, type, and scroll for you when you ask for a hand.</string>
     <string name="voice_listening">I\'m listening, go ahead...</string>
     <string name="voice_error">Couldn\'t catch that, mate. Mind trying again?</string>
+    <string name="voice_heard_nothing">Didn\'t catch anything there, boss. Go again?</string>
+    <string name="voice_falling_back">Switching to the phone\'s own voice screen...</string>
+    <string name="voice_unavailable">I can\'t find a voice input app on this phone, mate.</string>
     <string name="voice_permission_needed">I need mic access to hear you, boss.</string>
     <string name="sms_permission_needed">I need SMS permission before I can send texts, mate.</string>
     <string name="biometric_title">Quick check, boss</string>

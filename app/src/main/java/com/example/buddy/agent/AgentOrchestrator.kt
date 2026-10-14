@@ -2,8 +2,10 @@ package com.example.buddy.agent
 
 import com.example.buddy.ai.BuddyDecision
 import com.example.buddy.ai.ChatTurn
+import com.example.buddy.ai.FriendlyErrors
 import com.example.buddy.ai.MissingKeyException
 import com.example.buddy.ai.ModelRouter
+import com.example.buddy.ai.NoProviderConfiguredException
 import com.example.buddy.data.repo.AuditRepository
 import com.example.buddy.data.repo.ChatRepository
 import com.example.buddy.security.SecurityManager
@@ -101,8 +103,9 @@ class AgentOrchestrator(
                 val error = outcome.exceptionOrNull()
                 _events.emit(
                     AgentEvent.Error(
-                        reason = error?.message ?: "Connection hiccup",
-                        isMissingKey = error is MissingKeyException
+                        reason = FriendlyErrors.explain(error),
+                        isMissingKey = error is MissingKeyException ||
+                            error is NoProviderConfiguredException
                     )
                 )
                 return

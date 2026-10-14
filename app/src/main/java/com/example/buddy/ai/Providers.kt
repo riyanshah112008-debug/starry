@@ -127,3 +127,10 @@ object ModelCatalog {
         ProviderKind.CUSTOM -> "gpt-4o-mini"
     }
 }
+
+/**
+ * Thrown when the user hasn't set up any usable AI provider yet, so we can say
+ * something warm and actionable instead of a raw network error.
+ */
+class NoProviderConfiguredException :
+    IllegalStateException("No AI provider is set up yet")

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Buddy — a warm AI assistant for your phone | Starry</title>
+<meta name="description" content="Buddy is a warm, informal Android assistant by Starry. Control your phone by voice or text. Works offline for most commands, with 10 AI providers behind one key." />
+<style>
+  :root{
+    --amber:#FFB74D; --amber-dark:#F57C00; --bg:#181411; --surface:#241E1A;
+    --surface-2:#302822; --text:#FFF8F0; --muted:#D7C4B2; --on-amber:#23180D;
+    --green:#B9F6CA; --red:#FFCDD2;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  a{color:var(--amber)}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+  header{
+    border-bottom:1px solid rgba(255,183,77,.15);
+    background:rgba(36,30,26,.85); backdrop-filter:blur(8px);
+    position:sticky; top:0; z-index:10;
+  }
+  header .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{font-weight:700;font-size:20px;color:var(--amber);letter-spacing:.3px}
+  .brand span{color:var(--muted);font-weight:400;font-size:14px}
+  nav a{margin-left:18px;color:var(--muted);text-decoration:none;font-size:14px}
+  nav a:hover{color:var(--amber)}
+
+  .hero{padding:72px 0 56px;text-align:center}
+  .hero h1{font-size:clamp(34px,6vw,54px);line-height:1.1;margin:0 0 16px}
+  .hero h1 em{color:var(--amber);font-style:normal}
+  .hero p.lede{font-size:19px;color:var(--muted);max-width:640px;margin:0 auto 32px}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .btn{
+    display:inline-block;padding:14px 26px;border-radius:999px;font-weight:600;
+    text-decoration:none;border:1px solid transparent;font-size:16px;
+  }
+  .btn-primary{background:var(--amber);color:var(--on-amber)}
+  .btn-primary:hover{background:var(--amber-dark);color:#fff}
+  .btn-ghost{background:var(--surface-2);color:var(--amber)}
+  .btn-ghost:hover{border-color:var(--amber)}
+  .meta{margin-top:16px;font-size:13px;color:var(--muted)}
+  code{
+    background:var(--surface-2);padding:2px 6px;border-radius:6px;
+    font-size:13px;word-break:break-all;color:var(--amber)
+  }
+
+  section{padding:52px 0;border-top:1px solid rgba(255,183,77,.1)}
+  h2{font-size:26px;margin:0 0 8px}
+  h2 + p.sub{color:var(--muted);margin:0 0 28px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+  .card{
+    background:var(--surface);border:1px solid rgba(255,183,77,.12);
+    border-radius:16px;padding:20px;
+  }
+  .card h3{margin:0 0 8px;font-size:17px;color:var(--amber)}
+  .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .pill{
+    display:inline-block;font-size:12px;padding:3px 10px;border-radius:999px;
+    background:var(--surface-2);color:var(--amber);margin:0 6px 6px 0
+  }
+
+  ol.steps{padding-left:0;list-style:none;counter-reset:s}
+  ol.steps li{
+    counter-increment:s;position:relative;padding:0 0 20px 46px;color:var(--muted)
+  }
+  ol.steps li::before{
+    content:counter(s);position:absolute;left:0;top:-2px;width:30px;height:30px;
+    border-radius:50%;background:var(--surface-2);color:var(--amber);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px
+  }
+  ol.steps li strong{color:var(--text)}
+
+  table{width:100%;border-collapse:collapse;font-size:14.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid rgba(255,183,77,.12)}
+  th{color:var(--amber);font-weight:600}
+  td:last-child{color:var(--muted)}
+
+  .note{
+    background:var(--surface);border-left:3px solid var(--amber);
+    border-radius:0 12px 12px 0;padding:16px 18px;color:var(--muted);font-size:14.5px
+  }
+  .note strong{color:var(--text)}
+
+  footer{padding:40px 0;color:var(--muted);font-size:13.5px;text-align:center}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">Starry <span>· Buddy</span></div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#privacy">Privacy</a>
+      <a href="https://github.com/riyanshah112008-debug/starry">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero wrap">
+  <h1>Meet <em>Buddy</em> — an assistant that talks like a mate</h1>
+  <p class="lede">
+    A warm, informal Android assistant from Starry. Ask it to open apps, send texts,
+    change the volume or remember your WiFi password — by voice or text.
+    Most of it works with no setup at all.
+  </p>
+  <div class="cta">
+    <a class="btn btn-primary" href="https://github.com/riyanshah112008-debug/starry/releases/latest/download/buddy-latest.apk">Download Buddy APK</a>
+    <a class="btn btn-ghost" href="#install">How to install</a>
+  </div>
+  <p class="meta">
+    Version 2.0.1 · Android 8.0+ · ~2.5 MB · signed release build
+  </p>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="sub">Built to be useful before you configure anything.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Works with zero setup</h3>
+        <p>Open apps, open links, send texts, change volume, toggle the torch, set
+        alarms and remember facts — all handled on the phone with <strong>no API
+        call at all</strong>.</p>
+      </div>
+      <div class="card">
+        <h3>Hands-free voice</h3>
+        <p>Flip on hands-free and the mic keeps listening, so you never tap again.
+        Buddy reads its replies out loud too.</p>
+      </div>
+      <div class="card">
+        <h3>Ten AI providers, one app</h3>
+        <p>OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, DeepSeek, Together,
+        a local Ollama, or any custom OpenAI-compatible endpoint.</p>
+      </div>
+      <div class="card">
+        <h3>It can't burn your key</h3>
+        <p>A hard per-session budget, a response cache and one model call per
+        request. When the cap is hit Buddy stops and tells you.</p>
+      </div>
+      <div class="card">
+        <h3>It asks before it's scary</h3>
+        <p>Sending texts and running commands always pause for a friendly
+        confirmation, and every action is written to an on-device audit log.</p>
+      </div>
+      <div class="card">
+        <h3>Hands-free phone control</h3>
+        <p>Optional accessibility support lets Buddy tap, type and scroll on your
+        behalf — only when you ask it to.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="providers">
+  <div class="wrap">
+    <h2>Pick your brain</h2>
+    <p class="sub">Bring a key for any of these, or run a model locally for free.</p>
+    <div>
+      <span class="pill">OpenAI</span><span class="pill">Anthropic Claude</span>
+      <span class="pill">Google Gemini</span><span class="pill">OpenRouter</span>
+      <span class="pill">Groq</span><span class="pill">Mistral</span>
+      <span class="pill">DeepSeek</span><span class="pill">Together AI</span>
+      <span class="pill">Ollama (local, no key)</span><span class="pill">Custom endpoint</span>
+    </div>
+    <p class="sub" style="margin-top:24px">Routing modes:</p>
+    <table>
+      <tr><th>Mode</th><th>What it does</th></tr>
+      <tr><td><code>AUTO</code></td><td>Local first, then the cheapest working model</td></tr>
+      <tr><td><code>BEST</code></td><td>Highest-tier model you have a key for</td></tr>
+      <tr><td><code>FALLBACK</code></td><td>Walks down the list until one answers</td></tr>
+      <tr><td><code>ENSEMBLE</code></td><td>Asks up to 3 models in parallel and majority-votes the action</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+    <p class="sub">About a minute, no Android Studio needed.</p>
+    <ol class="steps">
+      <li><strong>Download the APK</strong> on your Android phone.</li>
+      <li><strong>Open it</strong> from your notifications or Downloads.</li>
+      <li><strong>Allow installing from this source</strong> when Android asks
+        (<em>Settings → Apps → Special access → Install unknown apps</em>).</li>
+      <li><strong>Install and open Buddy.</strong></li>
+      <li><strong>Try it with no setup:</strong> say or type
+        <code>open chrome</code>, <code>remember my wifi password is blue123</code>,
+        <code>volume up</code> or <code>what time is it</code>.</li>
+      <li><strong>Optional:</strong> add an AI key in the gear menu, and switch on
+        accessibility if you want Buddy to tap and type for you.</li>
+    </ol>
+
+    <div class="note">
+      <p style="margin:0 0 10px"><strong>Why might Android call it "harmful" or "unsafe"?</strong></p>
+      <p style="margin:0 0 10px">
+        Android shows that warning for <em>any</em> app installed outside the Play
+        Store — it isn't a virus scan result, it's a policy about the source. It is
+        made worse when an app is signed with a throwaway debug key, which is what
+        earlier Buddy test builds used.
+      </p>
+      <p style="margin:0">
+        Buddy 2.0.1 ships as a <strong>properly signed release build</strong>
+        (minified, non-debuggable, signed with the Starry release key), asks for
+        fewer permissions than before, and no longer requests
+        <code>QUERY_ALL_PACKAGES</code>. If Play Protect still shows a prompt,
+        choose <em>Install anyway</em> — or tap <em>Details → Scan</em> to run a
+        fresh check.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <h2>Privacy</h2>
+    <p class="sub">Your data stays on your phone unless you point Buddy at a provider.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Keys are encrypted</h3>
+        <p>API keys live in Android's <code>EncryptedSharedPreferences</code>,
+        backed by the hardware keystore. They're never bundled in the app.</p>
+      </div>
+      <div class="card">
+        <h3>Local-first by design</h3>
+        <p>Most commands never leave the device. Only requests that genuinely need
+        a model are sent, and only to the provider you chose.</p>
+      </div>
+      <div class="card">
+        <h3>No analytics, no tracking</h3>
+        <p>No third-party SDKs, no telemetry, and cloud backups are disabled.</p>
+      </div>
+      <div class="card">
+        <h3>Untrusted screen text is filtered</h3>
+        <p>If screen contents are ever shared with a model, prompt-injection
+        patterns are stripped first.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Buddy is an open project by <strong>Starry</strong>.</p>
+    <p>
+      <a href="https://github.com/riyanshah112008-debug/starry">Source</a> ·
+      <a href="https://github.com/riyanshah112008-debug/starry/releases">Releases</a> ·
+      <a href="https://github.com/riyanshah112008-debug/starry/blob/cline/1kcns2ha/TESTING.md">Testing guide</a>
+    </p>
+    <p style="opacity:.7">Not affiliated with OpenAI, Anthropic, Google or any listed provider.</p>
+  </div>
+</footer>
+
+</body>
+</html>

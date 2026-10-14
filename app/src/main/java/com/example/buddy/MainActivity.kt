@@ -12,6 +12,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.text.InputType
+import android.util.Log
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -63,12 +64,37 @@ class MainActivity : AppCompatActivity() {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
 
+    /** Consecutive in-process recogniser failures; drives the fallback. */
+    private var voiceFailures = 0
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val micPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) startListening() else toast(getString(R.string.voice_permission_needed))
+    }
+
+    /** Fallback path: the system's own voice-input screen. */
+    private val voiceActivityLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            voiceFailures = 0
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+                .orEmpty()
+            if (spoken.isNotEmpty()) {
+                binding.etMessage.setText(spoken)
+                submitCurrentMessage()
+            } else if (handsFree) {
+                scheduleRestart()
+            }
+        } else if (handsFree) {
+            scheduleRestart()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -271,51 +297,75 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSpeechRecognizer() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) return
-
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-            setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) {
-                    isListening = true
-                    refreshStatus()
-                }
-
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-
-                override fun onEndOfSpeech() {
-                    isListening = false
-                }
-
-                override fun onError(error: Int) {
-                    isListening = false
-                    if (handsFree) {
-                        scheduleRestart()
-                    } else {
-                        toast(getString(R.string.voice_error))
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            speechRecognizer = null
+            return
+        }
+        speechRecognizer = try {
+            SpeechRecognizer.createSpeechRecognizer(this).apply {
+                setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        isListening = true
+                        voiceFailures = 0
                         refreshStatus()
                     }
-                }
 
-                override fun onResults(results: Bundle?) {
-                    isListening = false
-                    val spoken = results
-                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        ?.firstOrNull()
-                        ?.trim()
-                        .orEmpty()
-                    if (spoken.isNotEmpty()) {
-                        binding.etMessage.setText(spoken)
-                        submitCurrentMessage()
-                    } else if (handsFree) {
-                        scheduleRestart()
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+
+                    override fun onEndOfSpeech() {
+                        isListening = false
                     }
-                }
 
-                override fun onPartialResults(partialResults: Bundle?) {}
-                override fun onEvent(eventType: Int, params: Bundle?) {}
-            })
+                    override fun onError(error: Int) {
+                        isListening = false
+                        voiceFailures++
+                        Log.w(TAG, "SpeechRecognizer error code=$error (failures=$voiceFailures)")
+                        when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                                if (handsFree) scheduleRestart() else {
+                                    toast(getString(R.string.voice_heard_nothing))
+                                    refreshStatus()
+                                }
+
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                                mainHandler.postDelayed({ if (handsFree) startListening() }, 500L)
+
+                            else ->
+                                if (!handsFree || voiceFailures >= 2) {
+                                    toast(getString(R.string.voice_falling_back))
+                                    launchSystemRecognizer()
+                                } else {
+                                    scheduleRestart()
+                                }
+                        }
+                    }
+
+                    override fun onResults(results: Bundle?) {
+                        isListening = false
+                        voiceFailures = 0
+                        val spoken = results
+                            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            ?.firstOrNull()
+                            ?.trim()
+                            .orEmpty()
+                        if (spoken.isNotEmpty()) {
+                            binding.etMessage.setText(spoken)
+                            submitCurrentMessage()
+                        } else if (handsFree) {
+                            scheduleRestart()
+                        }
+                    }
+
+                    override fun onPartialResults(partialResults: Bundle?) {}
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Could not create SpeechRecognizer", t)
+            null
         }
     }
 
@@ -331,25 +381,74 @@ class MainActivity : AppCompatActivity() {
 
     private fun startListening() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            toast(getString(R.string.voice_error))
+            launchSystemRecognizer()
             return
         }
         if (speechRecognizer == null) setupSpeechRecognizer()
-        val recognizer = speechRecognizer ?: return
+        val recognizer = speechRecognizer
+        if (recognizer == null) {
+            launchSystemRecognizer()
+            return
+        }
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
-        recognizer.startListening(intent)
-        isListening = true
+        try {
+            // cancel() first: startListening on a busy recogniser throws.
+            recognizer.cancel()
+            recognizer.startListening(intent)
+            isListening = true
+            refreshStatus()
+        } catch (t: Throwable) {
+            Log.w(TAG, "startListening failed", t)
+            isListening = false
+            launchSystemRecognizer()
+        }
+    }
+
+    /**
+     * Fallback that opens the system's own voice-input screen. Less slick than the
+     * in-process recogniser, but it works on any device that has a speech app.
+     */
+    private fun launchSystemRecognizer() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, getString(R.string.voice_listening))
+        }
+        if (intent.resolveActivity(packageManager) == null) {
+            toast(getString(R.string.voice_unavailable))
+            stopHandsFree()
+            return
+        }
+        try {
+            voiceActivityLauncher.launch(intent)
+        } catch (t: Throwable) {
+            Log.w(TAG, "system recogniser launch failed", t)
+            toast(getString(R.string.voice_unavailable))
+            stopHandsFree()
+        }
+    }
+
+    private fun stopHandsFree() {
+        handsFree = false
+        SecureVault.setHandsFree(false)
+        renderHandsFreeButton()
+        isListening = false
         refreshStatus()
     }
 
     private fun stopListening() {
         isListening = false
-        speechRecognizer?.stopListening()
+        try {
+            speechRecognizer?.cancel()
+        } catch (_: Throwable) {
+            // nothing we can do here
+        }
         refreshStatus()
     }
 
@@ -583,5 +682,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val SESSION_ID = "default_buddy_session"
         private const val RESTART_DELAY_MS = 700L
+        private const val TAG = "Buddy"
     }
 }
