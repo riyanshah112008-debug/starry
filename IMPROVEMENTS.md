@@ -98,7 +98,70 @@ the only part with a single right answer; chit-chat takes the first reply.
 
 ---
 
-## Try this to see the difference
+---
+
+## 2.0.1 — fixes for real device testing
+
+These came from actually running the 2.0.0 build on a phone.
+
+### The `CLEARTEXT communication to 127.0.0.1 not permitted` error
+
+**Symptom:** every message that needed a model failed with that raw OkHttp error,
+and it silently ate 2 of the 8 budgeted calls.
+
+**Cause:** `ModelRouter.isConfigured` didn't exist. The router treated
+`requiresKey == false` as "ready to use", so **Ollama** (default
+`http://127.0.0.1:11434`) and **Custom** were always in the candidate list. Android
+blocks cleartext HTTP by default on targetSdk 34, so both attempts failed instantly.
+The budget was charged before the request, so failures still cost calls.
+
+**Fix:**
+- A provider is only usable if the user set it up: a key for keyed providers, an
+  explicitly saved base URL for keyless ones (Ollama / custom).
+- `AUTO` now tries at most 2 configured providers instead of walking the whole
+  catalogue.
+- Providers are resolved **before** spending, so misconfiguration is free.
+- Nothing configured → `NoProviderConfiguredException` and a warm, actionable
+  message instead of a network error.
+- Added `res/xml/network_security_config.xml`: HTTPS-only, **except** loopback, so a
+  genuine local Ollama works.
+- New `FriendlyErrors` maps raw failures to human text (bad key, 404 model, 429,
+  5xx, no internet, timeout).
+
+### Voice input
+
+**Symptom:** tapping Talk produced "Couldn't catch that, mate" with no explanation.
+
+**Cause:** `onError` discarded the error code, and there was only one generic toast.
+`startListening` also didn't `cancel()` first, which throws when the recogniser is
+busy.
+
+**Fix:**
+- Error codes are logged (`adb logcat -s Buddy`) and handled individually.
+- `ERROR_NO_MATCH` / `SPEECH_TIMEOUT` → listen again quietly.
+- `ERROR_RECOGNIZER_BUSY` → 500 ms delay and retry.
+- Client / audio / permission failures → automatic fallback to the **system
+  voice-input screen** (`ACTION_RECOGNIZE_SPEECH` activity), which works wherever a
+  speech app is installed. Added the matching `<queries>` entry.
+- `cancel()` before every start; creation and start wrapped in try/catch.
+
+### "This app may be harmful"
+
+**Fix:** shipped as a **signed release build** — R8-minified, non-debuggable, signed
+with the Starry release key (`CN=Starry, OU=Buddy, O=Starry`), APK Signature
+Scheme v2. Also **removed `QUERY_ALL_PACKAGES`**, which is a sensitive permission
+that can trigger warnings; app-name lookup still works via a scoped `<queries>`
+block for launcher apps. Result: 2.5 MB instead of 7.4 MB.
+
+> Play Protect will still prompt for any app installed outside the Play Store —
+> that's a policy about the source, not a virus scan. Choose *Install anyway*.
+
+### Website
+
+`docs/index.html` — a Starry landing page with download, install steps, a
+"why does Android warn me" explainer, provider list and privacy notes.
+`.nojekyll` is included so GitHub Pages serves it as-is.
+
 
 | Say | API calls used |
 |---|---|
