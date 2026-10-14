@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Warm Amber / Soft Orange Palette (Dark-mode friendly) -->
+    <color name="buddy_amber_primary">#FFB74D</color>
+    <color name="buddy_amber_dark">#F57C00</color>
+    <color name="buddy_amber_light">#FFE0B2</color>
+    <color name="buddy_orange_accent">#FF8A65</color>
+
+    <!-- Warm Dark Surfaces -->
+    <color name="buddy_bg">#181411</color>
+    <color name="buddy_surface">#241E1A</color>
+    <color name="buddy_surface_elevated">#302822</color>
+
+    <!-- Text Colors -->
+    <color name="buddy_text_primary">#FFF8F0</color>
+    <color name="buddy_text_secondary">#D7C4B2</color>
+    <color name="buddy_text_on_amber">#23180D</color>
+
+    <!-- Chat Bubble Colors -->
+    <color name="bubble_user_bg">#FFB74D</color>
+    <color name="bubble_user_text">#23180D</color>
+
+    <color name="bubble_buddy_bg">#2E2621</color>
+    <color name="bubble_buddy_text">#FFF8F0</color>
+
+    <color name="bubble_thinking_bg">#2B2927</color>
+    <color name="bubble_thinking_text">#CFC6BE</color>
+
+    <color name="bubble_tool_bg">#1E3829</color>
+    <color name="bubble_tool_text">#B9F6CA</color>
+
+    <color name="bubble_error_bg">#3E2222</color>
+    <color name="bubble_error_text">#FFCDD2</color>
+
+    <color name="bubble_confirm_bg">#3A2E1E</color>
+    <color name="bubble_confirm_text">#FFE082</color>
+</resources>

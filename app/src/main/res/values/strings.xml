@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Core required UI copy -->
+    <string name="app_name">Buddy</string>
+    <string name="input_hint">Ask me anything, boss...</string>
+    <string name="send_button">Send</string>
+    <string name="voice_button">Talk</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_api">Paste your OpenAI API key here</string>
+    <string name="settings_save">Save it</string>
+    <string name="settings_saved">Got it - saved.</string>
+    <string name="status_ready">Ready when you are.</string>
+    <string name="status_thinking">Hmm, let me think...</string>
+    <string name="status_done">All done.</string>
+    <string name="error_generic">Ah, that didn\'t work. Try again?</string>
+    <string name="error_no_key">I need an API key first. Tap the gear up top.</string>
+
+    <!-- Warm chat bubble event templates -->
+    <string name="bubble_thinking">Hmm, let me think...</string>
+    <string name="bubble_tool_result">Okay, done: %1$s</string>
+    <string name="bubble_error">Ah, that didn\'t work: %1$s</string>
+    <string name="bubble_confirmation">Heads up - this next bit is a big deal. Okay to go?</string>
+    <string name="welcome_message">Hey boss! I\'m Buddy. Tap the gear up top to drop in your OpenAI key, or just tell me what we\'re doing today.</string>
+
+    <!-- Confirmation dialog copy (warm, not scary) -->
+    <string name="confirm_default_title">Heads up</string>
+    <string name="confirm_default_body">Buddy wants to %1$s. That\'s a big deal - okay to go?</string>
+    <string name="confirm_default_allow">Yeah, do it</string>
+    <string name="confirm_default_deny">Nope, cancel</string>
+
+    <string name="confirm_sms_title">Sending a text</string>
+    <string name="confirm_sms_body">Buddy\'s about to text %1$s. Look good?</string>
+    <string name="confirm_sms_allow">Send it</string>
+    <string name="confirm_sms_deny">Hold on</string>
+
+    <string name="confirm_shell_title">Running a command</string>
+    <string name="confirm_shell_body">Buddy wants to run: %1$s. Cool with that?</string>
+    <string name="confirm_shell_allow">Go for it</string>
+    <string name="confirm_shell_deny">Stop</string>
+
+    <!-- Settings & Accessibility & Voice helper strings -->
+    <string name="settings_cancel">Never mind</string>
+    <string name="settings_enable_accessibility">Turn on hands-free control</string>
+    <string name="accessibility_service_label">Buddy Phone Helper</string>
+    <string name="accessibility_service_description">Lets Buddy tap, type, and scroll for you when you ask for a hand.</string>
+    <string name="voice_listening">I\'m listening, go ahead...</string>
+    <string name="voice_error">Couldn\'t catch that, mate. Mind trying again?</string>
+    <string name="voice_permission_needed">I need mic access to hear you, boss.</string>
+    <string name="sms_permission_needed">I need SMS permission before I can send texts, mate.</string>
+    <string name="biometric_title">Quick check, boss</string>
+    <string name="biometric_subtitle">Just making sure it\'s really you before I do this.</string>
+    <string name="biometric_negative">Cancel</string>
+    <string name="action_cancelled_by_user">No worries, I held off on that.</string>
+</resources>
