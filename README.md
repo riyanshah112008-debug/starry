@@ -25,6 +25,7 @@ like a close friend and can drive your phone through an `AccessibilityService`.
   gate + biometrics, prompt-injection guard on screen text
 
 **Want to run it?** See **[TESTING.md](TESTING.md)** for a step-by-step guide,
-and **[IMPROVEMENTS.md](IMPROVEMENTS.md)** for what changed in 2.0.
+**[GOOGLE_SIGNIN.md](GOOGLE_SIGNIN.md)** to wire up Sign in with Google, and
+**[IMPROVEMENTS.md](IMPROVEMENTS.md)** for what changed since 1.0.
 
 Requires Android Studio Hedgehog+ / JDK 17. `minSdk 26`, `targetSdk 34`.
