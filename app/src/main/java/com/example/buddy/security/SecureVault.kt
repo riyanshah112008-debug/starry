@@ -28,6 +28,10 @@ object SecureVault {
     private const val KEY_SPEAK_REPLIES = "speak_replies"
     private const val KEY_SEND_SNAPSHOT = "send_snapshot"
     private const val KEY_MULTI_STEP = "multi_step"
+    private const val KEY_GOOGLE_CLIENT_ID = "google_client_id"
+    private const val KEY_ACCOUNT_NAME = "account_name"
+    private const val KEY_ACCOUNT_EMAIL = "account_email"
+    private const val KEY_ACCOUNT_GIVEN = "account_given"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -131,6 +135,41 @@ object SecureVault {
     fun setMultiStep(on: Boolean) = p().edit().putBoolean(KEY_MULTI_STEP, on).apply()
 
     fun isMultiStep(): Boolean = p().getBoolean(KEY_MULTI_STEP, false)
+
+    // ---------------- Google account ----------------
+
+    fun saveGoogleClientId(value: String) =
+        p().edit().putString(KEY_GOOGLE_CLIENT_ID, value.trim()).apply()
+
+    fun getGoogleClientId(): String? =
+        p().getString(KEY_GOOGLE_CLIENT_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun saveAccount(displayName: String, email: String, givenName: String) {
+        p().edit()
+            .putString(KEY_ACCOUNT_NAME, displayName)
+            .putString(KEY_ACCOUNT_EMAIL, email)
+            .putString(KEY_ACCOUNT_GIVEN, givenName)
+            .apply()
+    }
+
+    fun getAccountName(): String? =
+        p().getString(KEY_ACCOUNT_NAME, null)?.takeIf { it.isNotBlank() }
+
+    fun getAccountEmail(): String? =
+        p().getString(KEY_ACCOUNT_EMAIL, null)?.takeIf { it.isNotBlank() }
+
+    fun getAccountGivenName(): String? =
+        p().getString(KEY_ACCOUNT_GIVEN, null)?.takeIf { it.isNotBlank() }
+
+    fun isSignedIn(): Boolean = getAccountEmail() != null
+
+    fun clearAccount() {
+        p().edit()
+            .remove(KEY_ACCOUNT_NAME)
+            .remove(KEY_ACCOUNT_EMAIL)
+            .remove(KEY_ACCOUNT_GIVEN)
+            .apply()
+    }
 
     /** Kept for compatibility with older call sites. */
     fun hasApiKey(): Boolean = hasAnyKey()

@@ -5,6 +5,10 @@ like a close friend and can drive your phone through an `AccessibilityService`.
 
 - Chat UI with voice + text input, warm message bubbles, and a settings gear for
   your OpenAI API key
+- **ChatGPT-style shell** — history sidebar, header model switcher, plain
+  full-width assistant replies, prompt suggestions, light + dark themes
+- **Sign in with Google** via Credential Manager (no Firebase needed) — Buddy
+  greets you by name and personalises replies
 - **Works with no API key and no accessibility for most commands** — a local
   fast path handles open-app, URLs, SMS, volume, torch, alarms and memory
 - **Hands-free voice loop** with spoken replies (TextToSpeech)

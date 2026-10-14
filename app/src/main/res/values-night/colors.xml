@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark palette -->
+    <color name="buddy_bg">#212121</color>
+    <color name="buddy_surface">#171717</color>
+    <color name="buddy_surface_alt">#2A2A2A</color>
+    <color name="buddy_border">#3A3A3A</color>
+
+    <color name="buddy_text_primary">#ECECEC</color>
+    <color name="buddy_text_secondary">#A0A0A8</color>
+
+    <color name="buddy_amber_primary">#FFB74D</color>
+    <color name="buddy_on_amber">#23180D</color>
+    <color name="buddy_accent_soft">#3A2E1E</color>
+
+    <color name="bubble_user_bg">#2F2F2F</color>
+    <color name="bubble_user_text">#ECECEC</color>
+
+    <color name="avatar_buddy_bg">#FFB74D</color>
+    <color name="avatar_buddy_text">#23180D</color>
+    <color name="avatar_user_bg">#5A5A5A</color>
+    <color name="avatar_user_text">#FFFFFF</color>
+
+    <color name="status_muted">#9A9AA5</color>
+    <color name="bubble_error_bg">#3A1F1F</color>
+    <color name="bubble_error_text">#FFB4AB</color>
+    <color name="bubble_tool_bg">#1E2E22</color>
+    <color name="bubble_tool_text">#A5D6A7</color>
+    <color name="bubble_confirm_bg">#33291A</color>
+    <color name="bubble_confirm_text">#FFD54F</color>
+
+    <color name="buddy_scrim">#00000000</color>
+</resources>

@@ -22,8 +22,8 @@ android {
         applicationId = "com.example.buddy"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "2.0.1"
+        versionCode = 4
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -70,6 +70,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Credential Manager (Google Sign-In) needs java.time on older devices.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -105,4 +107,14 @@ dependencies {
     // Networking & JSON
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // ChatGPT-style navigation drawer
+    implementation("androidx.drawerlayout:drawerlayout:1.2.0")
+
+    // Google Sign-In via Credential Manager
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.0")
+
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

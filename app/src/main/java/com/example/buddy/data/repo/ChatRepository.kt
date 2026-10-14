@@ -2,6 +2,7 @@ package com.example.buddy.data.repo
 
 import com.example.buddy.data.dao.ChatDao
 import com.example.buddy.data.entity.ChatMessage
+import com.example.buddy.data.model.SessionRow
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -60,6 +61,17 @@ class ChatRepository(private val chatDao: ChatDao) {
 
     suspend fun clearThinkingBubbles(sessionId: String) {
         chatDao.clearThinkingBubbles(sessionId)
+    }
+
+    // ---------------- ChatGPT-style history ----------------
+
+    fun observeSessions(): Flow<List<SessionRow>> = chatDao.observeSessions()
+
+    suspend fun isSessionEmpty(sessionId: String): Boolean =
+        chatDao.countInSession(sessionId) == 0
+
+    suspend fun deleteSession(sessionId: String) {
+        chatDao.clearSession(sessionId)
     }
 
     /**

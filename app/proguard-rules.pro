@@ -23,3 +23,9 @@
 # Room generated code
 -keep class * extends androidx.room.RoomDatabase { <init>(); }
 -dontwarn androidx.room.paging.**
+
+# Credential Manager / Google Identity (loaded reflectively by the framework)
+-keep class androidx.credentials.** { *; }
+-keep class com.google.android.libraries.identity.googleid.** { *; }
+-dontwarn com.google.android.libraries.identity.googleid.**
+-dontwarn com.google.android.gms.**

@@ -2,20 +2,30 @@
 <resources>
     <style name="Theme.Buddy" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/buddy_amber_primary</item>
-        <item name="colorPrimaryVariant">@color/buddy_amber_dark</item>
-        <item name="colorOnPrimary">@color/buddy_text_on_amber</item>
-        <item name="colorSecondary">@color/buddy_orange_accent</item>
-        <item name="colorOnSecondary">@color/buddy_text_on_amber</item>
-        <item name="android:windowBackground">@color/buddy_bg</item>
+        <item name="colorOnPrimary">@color/buddy_on_amber</item>
+        <item name="colorSecondary">@color/buddy_amber_primary</item>
+        <item name="colorOnSecondary">@color/buddy_on_amber</item>
+        <item name="android:windowBackground">@color/buddy_surface</item>
         <item name="colorSurface">@color/buddy_surface</item>
         <item name="colorOnSurface">@color/buddy_text_primary</item>
-        <item name="android:statusBarColor">@color/buddy_bg</item>
+        <item name="colorSurfaceVariant">@color/buddy_surface_alt</item>
+        <item name="android:statusBarColor">@color/buddy_surface</item>
         <item name="android:navigationBarColor">@color/buddy_surface</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
     <style name="Theme.Buddy.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
-        <item name="colorSurface">@color/buddy_surface_elevated</item>
+        <item name="colorSurface">@color/buddy_surface</item>
         <item name="colorOnSurface">@color/buddy_text_primary</item>
         <item name="colorPrimary">@color/buddy_amber_primary</item>
+        <item name="colorOnPrimary">@color/buddy_on_amber</item>
+    </style>
+
+    <style name="BuddyComposer">
+        <item name="android:background">@drawable/bg_composer</item>
+        <item name="android:paddingHorizontal">8dp</item>
+        <item name="android:paddingVertical">6dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
     </style>
 </resources>

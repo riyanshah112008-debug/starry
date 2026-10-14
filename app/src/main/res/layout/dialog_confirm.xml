@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/buddy_surface_elevated"
+    android:background="@color/buddy_surface"
     android:orientation="vertical"
     android:padding="22dp">
 
@@ -13,22 +13,22 @@
         android:layout_height="wrap_content"
         android:text="@string/confirm_default_title"
         android:textColor="@color/buddy_amber_primary"
-        android:textSize="20sp"
+        android:textSize="19sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/tvConfirmBody"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="10dp"
         android:lineSpacingExtra="3dp"
         android:textColor="@color/buddy_text_primary"
-        android:textSize="16sp" />
+        android:textSize="15sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="22dp"
+        android:layout_marginTop="20dp"
         android:gravity="end"
         android:orientation="horizontal">
 
@@ -38,6 +38,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/confirm_default_deny"
+            android:textAllCaps="false"
             android:textColor="@color/buddy_text_secondary" />
 
         <com.google.android.material.button.MaterialButton
@@ -47,10 +48,10 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:text="@string/confirm_default_allow"
-            android:textColor="@color/buddy_text_on_amber"
+            android:textAllCaps="false"
+            android:textColor="@color/buddy_on_amber"
             app:backgroundTint="@color/buddy_amber_primary"
             app:cornerRadius="20dp" />
-
     </LinearLayout>
 
 </LinearLayout>

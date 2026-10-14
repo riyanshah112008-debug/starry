@@ -18,6 +18,21 @@ class ContextBuilder(private val memoryRepository: MemoryRepository) {
     suspend fun buildSystemPrompt(includeScreenSnapshot: Boolean = true): String {
         val builder = StringBuilder(BUDDY_BASE_SYSTEM_PROMPT.trim())
 
+        // Personalise with the signed-in Google account, if there is one.
+        val displayName = SecureVault.getAccountName()
+        if (displayName != null) {
+            val given = SecureVault.getAccountGivenName()
+            builder.append("\n\nThe user is ")
+                .append(displayName)
+                .append(" (")
+                .append(SecureVault.getAccountEmail())
+                .append(")")
+            if (!given.isNullOrBlank()) {
+                builder.append(" - call them ").append(given).append(" sometimes, not every message")
+            }
+            builder.append(".\n")
+        }
+
         val memories = memoryRepository.getTopMemories(limit = MAX_MEMORIES)
         if (memories.isNotEmpty()) {
             builder.append("\n\nWhat you remember about the user:\n")

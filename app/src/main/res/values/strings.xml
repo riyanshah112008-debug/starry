@@ -86,4 +86,36 @@
     <string name="biometric_subtitle">Just making sure it\'s really you before I do this.</string>
     <string name="biometric_negative">Cancel</string>
     <string name="action_cancelled_by_user">No worries, I held off on that.</string>
+
+    <!-- ChatGPT-style shell -->
+    <string name="menu">Menu</string>
+    <string name="new_chat">New chat</string>
+    <string name="recent">Recent</string>
+    <string name="untitled_chat">New chat</string>
+    <string name="empty_greeting">What\'s on your mind?</string>
+    <string name="empty_greeting_named">Hey %1$s, what\'s on your mind?</string>
+    <string name="suggestion_1">Open Chrome</string>
+    <string name="suggestion_2">Remember my wifi password is blue123</string>
+    <string name="suggestion_3">Turn the volume up</string>
+    <string name="suggestion_4">What can you do?</string>
+    <string name="delete_chat_title">Delete this chat?</string>
+    <string name="delete_chat_body">Buddy will forget this whole conversation. Can\'t undo it.</string>
+    <string name="delete_chat_ok">Delete it</string>
+
+    <!-- Google sign-in -->
+    <string name="not_signed_in">Not signed in</string>
+    <string name="sign_in_subtitle">Sign in to personalise Buddy</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+    <string name="sign_out">Sign out</string>
+    <string name="sign_out_title">Sign out?</string>
+    <string name="sign_out_body">Buddy will stop using your name. Your chats stay on this phone.</string>
+    <string name="google_welcome">Signed in as %1$s. Nice to meet you properly, %2$s.</string>
+    <string name="google_signed_out">Signed out. No worries.</string>
+    <string name="google_no_client_id">I need a Google client id before I can sign you in. Tap Settings - there\'s a walkthrough there.</string>
+    <string name="google_no_accounts">I couldn\'t find a Google account on this phone, mate.</string>
+    <string name="google_signin_failed">Sign-in didn\'t work: %1$s</string>
+    <string name="google_signin_cancelled">No worries, left it alone.</string>
+    <string name="google_client_id_label">Google Web client ID (for Sign in with Google)</string>
+    <string name="google_client_id_hint">1234567890-abc.apps.googleusercontent.com</string>
+    <string name="hands_free_switch">Hands-free listening</string>
 </resources>
