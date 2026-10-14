@@ -13,3 +13,4 @@ app/build/
 /tools/
 build.log
 build-release.log
+build*.log
